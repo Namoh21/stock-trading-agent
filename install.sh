@@ -91,6 +91,63 @@ else
   PKG_MANAGER="unknown"
 fi
 
+# ── Network connectivity check ─────────────────────────────────────────────────
+header "Checking Network Connectivity"
+
+check_network() {
+  # Try HTTPS reachability to PyPI and fallback hosts
+  for host in pypi.org 8.8.8.8 1.1.1.1; do
+    if curl -sf --max-time 5 --connect-timeout 5 "https://$host" &>/dev/null \
+    || ping -c 1 -W 3 "$host" &>/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+if check_network; then
+  success "Internet connection OK"
+else
+  error "No internet connection detected."
+  echo ""
+  echo -e "  ${YELLOW}Network status:${NC}"
+  echo ""
+
+  # Show IP addresses
+  echo -e "  ${CYAN}Network interfaces:${NC}"
+  ip -brief addr 2>/dev/null | sed 's/^/    /' || ifconfig 2>/dev/null | grep -E "^[a-z]|inet " | sed 's/^/    /'
+  echo ""
+
+  # Show default gateway
+  echo -e "  ${CYAN}Default gateway:${NC}"
+  ip route show default 2>/dev/null | sed 's/^/    /' || echo "    (none found)"
+  echo ""
+
+  echo -e "  ${YELLOW}Troubleshooting steps:${NC}"
+  echo ""
+  echo "  1. Check your ethernet cable is plugged in, or connect to WiFi:"
+  echo "       sudo raspi-config  →  System Options → Wireless LAN"
+  echo ""
+  echo "  2. Check if you have an IP address:"
+  echo "       ip addr show"
+  echo ""
+  echo "  3. Test your gateway:"
+  echo "       ip route show default"
+  echo "       ping -c 3 \$(ip route | awk '/default/{print \$3}')"
+  echo ""
+  echo "  4. Test DNS:"
+  echo "       ping -c 3 8.8.8.8    (IP — bypasses DNS)"
+  echo "       ping -c 3 pypi.org   (hostname — tests DNS)"
+  echo ""
+  echo "  5. If using WiFi on a fresh Pi OS install:"
+  echo "       sudo nmcli dev wifi connect \"YourSSID\" password \"YourPassword\""
+  echo "       # or use the desktop network manager"
+  echo ""
+  echo "  Once connected, re-run:  sudo bash install.sh"
+  echo ""
+  exit 1
+fi
+
 apt_install() {
   # Install packages only if missing; suppress "already newest version" noise
   local pkgs=()
