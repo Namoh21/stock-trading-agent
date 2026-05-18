@@ -77,35 +77,84 @@ if systemctl list-units --full -all 2>/dev/null | grep -q "${SERVICE_NAME}.servi
   fi
 fi
 
-# ── Check Python ──────────────────────────────────────────────────────────────
-header "Checking Requirements"
+# ── Install system prerequisites ──────────────────────────────────────────────
+header "Installing System Prerequisites"
+
+# Detect package manager
+if command -v apt-get &>/dev/null; then
+  PKG_MANAGER="apt"
+elif command -v dnf &>/dev/null; then
+  PKG_MANAGER="dnf"
+elif command -v pacman &>/dev/null; then
+  PKG_MANAGER="pacman"
+else
+  PKG_MANAGER="unknown"
+fi
+
+apt_install() {
+  # Install packages only if missing; suppress "already newest version" noise
+  local pkgs=()
+  for pkg in "$@"; do
+    dpkg -s "$pkg" &>/dev/null 2>&1 || pkgs+=("$pkg")
+  done
+  if [[ ${#pkgs[@]} -gt 0 ]]; then
+    info "Installing: ${pkgs[*]}"
+    apt-get install -y "${pkgs[@]}" 2>&1 | grep -v "already the newest" || true
+  fi
+}
+
+if [[ "$PKG_MANAGER" == "apt" ]]; then
+  info "Updating package list..."
+  apt-get update -qq
+
+  # Core runtime
+  apt_install python3 python3-full python3-pip git curl
+
+  # iproute2 provides the `ss` command used for port checking
+  apt_install iproute2
+
+  success "System packages ready"
+
+elif [[ "$PKG_MANAGER" == "dnf" ]]; then
+  info "Installing prerequisites via dnf..."
+  dnf install -y python3 python3-pip git curl iproute 2>&1 | tail -3
+  success "System packages ready"
+
+elif [[ "$PKG_MANAGER" == "pacman" ]]; then
+  info "Installing prerequisites via pacman..."
+  pacman -Sy --noconfirm python python-pip git curl iproute2 2>&1 | tail -3
+  success "System packages ready"
+
+else
+  warn "Unrecognised package manager — skipping automatic prerequisite install."
+  warn "Make sure python3 (3.10+), python3-venv, git, and curl are installed."
+fi
+
+# ── Verify Python ──────────────────────────────────────────────────────────────
+header "Verifying Python"
 
 PYTHON_BIN=""
 for bin in python3 python; do
   if command -v "$bin" &>/dev/null; then
-    VER=$("$bin" -c "import sys; print(sys.version_info[:2])")
     if "$bin" -c "import sys; exit(0 if sys.version_info >= (3,10) else 1)" 2>/dev/null; then
       PYTHON_BIN="$bin"
-      success "Python found: $("$bin" --version)"
+      success "Python: $("$bin" --version)"
       break
     else
-      warn "Found $("$bin" --version) — Python 3.10+ required."
+      warn "Found $("$bin" --version) — need 3.10 or newer."
     fi
   fi
 done
 
 if [[ -z "$PYTHON_BIN" ]]; then
-  error "Python 3.10 or newer is required but was not found."
-  echo ""
-  echo "  Install it with:"
-  echo "    sudo apt update && sudo apt install -y python3 python3-full python3-pip"
+  error "Python 3.10+ not found after install attempt. Please install it manually and re-run."
   exit 1
 fi
 
-# Check python3-venv is available (needed on Debian/Ubuntu/Pi OS)
+# Verify venv module
 if ! "$PYTHON_BIN" -m venv --help &>/dev/null 2>&1; then
-  error "python3-venv module not found. Install it with:"
-  echo "    sudo apt install -y python3-full"
+  error "python3-venv not available even after installing python3-full."
+  echo "  Try: sudo apt install -y python3-full"
   exit 1
 fi
 success "python3-venv available"
