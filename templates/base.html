@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Trading Agent{% endblock %}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0a0a;
+      --surface:  #111111;
+      --border:   #1e1e1e;
+      --border2:  #2a2a2a;
+      --text:     #e0e0e0;
+      --muted:    #666;
+      --green:    #4caf50;
+      --red:      #ef5350;
+      --blue:     #64b5f6;
+      --orange:   #ffa726;
+      --nav-w:    220px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ── */
+    nav {
+      width: var(--nav-w);
+      min-height: 100vh;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      position: fixed;
+      top: 0; left: 0;
+    }
+
+    .nav-logo {
+      padding: 20px 18px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo h1 { font-size: 15px; font-weight: 700; color: #fff; }
+    .nav-logo span { font-size: 11px; color: var(--muted); }
+
+    .nav-links { padding: 10px 0; flex: 1; }
+    .nav-links a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 18px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      border-left: 3px solid transparent;
+      transition: all .15s;
+    }
+    .nav-links a:hover { color: var(--text); background: #161616; }
+    .nav-links a.active { color: var(--blue); border-left-color: var(--blue); background: #0d1a2b; }
+    .nav-links .icon { font-size: 15px; width: 18px; text-align: center; }
+
+    .nav-status {
+      padding: 14px 18px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .dot-idle    { background: var(--muted); }
+    .dot-running { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Main ── */
+    main {
+      margin-left: var(--nav-w);
+      padding: 28px;
+      flex: 1;
+      max-width: 1200px;
+    }
+
+    .page-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+
+    /* ── Cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .card-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; }
+    .card-value { font-size: 22px; font-weight: 700; color: #fff; }
+    .card-value.up   { color: var(--green); }
+    .card-value.down { color: var(--red);   }
+
+    /* ── Panel ── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+    }
+    .panel-title {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 12px;
+    }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; font-size: 10px; color: var(--muted); text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+    td { padding: 8px; border-bottom: 1px solid #161616; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #161616; }
+    .tk { font-weight: 700; color: #fff; }
+    .up { color: var(--green); }
+    .dn { color: var(--red);   }
+
+    /* ── Badges ── */
+    .pill {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+    .pill-green  { background: #0d2b0d; color: var(--green); }
+    .pill-orange { background: #2b2b0d; color: var(--orange); }
+    .pill-red    { background: #2b0d0d; color: var(--red);   }
+    .pill-blue   { background: #0d1a2b; color: var(--blue);  }
+    .pill-gray   { background: #1e1e1e; color: var(--muted); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 7px;
+      border: 1px solid var(--border2);
+      background: #181818;
+      color: #ccc;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .15s;
+    }
+    .btn:hover { background: #222; }
+    .btn-primary { background: #0d1a2b; color: var(--blue); border-color: #1a3a5a; font-weight: 600; }
+    .btn-primary:hover { background: #122236; }
+    .btn-success { background: #0d2b0d; color: var(--green); border-color: #1a4a1a; font-weight: 600; }
+    .btn-success:hover { background: #0f3010; }
+    .btn-danger  { background: #2b0d0d; color: var(--red);   border-color: #4a1a1a; font-weight: 600; }
+    .btn-danger:hover  { background: #301010; }
+    .btn-sm { padding: 5px 10px; font-size: 11px; }
+
+    /* ── Forms ── */
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .05em; }
+    input[type=text], input[type=password], input[type=time], select {
+      width: 100%;
+      max-width: 420px;
+      padding: 8px 10px;
+      background: #0d0d0d;
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--blue); }
+
+    /* ── Log ── */
+    .log-line {
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 11.5px;
+      line-height: 1.8;
+      padding: 1px 4px;
+      border-radius: 3px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-INFO    { color: var(--text); }
+    .log-WARNING { color: var(--orange); }
+    .log-ERROR   { color: var(--red); }
+    .log-DEBUG   { color: var(--muted); }
+
+    /* ── Alerts ── */
+    .alert {
+      padding: 10px 14px;
+      border-radius: 7px;
+      margin-bottom: 14px;
+      font-size: 12px;
+      border-left: 3px solid;
+    }
+    .alert-success { background: #0d2b0d; border-color: var(--green); color: var(--green); }
+    .alert-warning { background: #2b2b0d; border-color: var(--orange); color: var(--orange); }
+    .alert-danger  { background: #2b0d0d; border-color: var(--red);    color: var(--red); }
+
+    /* ── Misc ── */
+    .empty { color: var(--muted); text-align: center; padding: 20px; font-size: 12px; }
+    .row   { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+    .spacer { flex: 1; }
+    .text-muted { color: var(--muted); }
+    .text-green { color: var(--green); }
+    .text-red   { color: var(--red);   }
+    .text-blue  { color: var(--blue);  }
+
+    @media (max-width: 700px) {
+      nav { display: none; }
+      main { margin-left: 0; padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav id="sidebar">
+  <div class="nav-logo">
+    <h1>Trading Agent</h1>
+    <span id="nav-username"></span>
+  </div>
+  <div class="nav-links">
+    <a href="/" class="{% if request.path == '/' %}active{% endif %}">
+      <span class="icon">&#9641;</span> Dashboard
+    </a>
+    <a href="/portfolio" class="{% if request.path == '/portfolio' %}active{% endif %}">
+      <span class="icon">&#9670;</span> Portfolio
+    </a>
+    <a href="/history" class="{% if request.path == '/history' %}active{% endif %}">
+      <span class="icon">&#8635;</span> Trade History
+    </a>
+    <a href="/logs" class="{% if request.path == '/logs' %}active{% endif %}">
+      <span class="icon">&#9776;</span> Logs
+    </a>
+    <a href="/schedule" class="{% if request.path == '/schedule' %}active{% endif %}">
+      <span class="icon">&#9202;</span> Schedule
+    </a>
+    <a href="/config" class="{% if request.path == '/config' %}active{% endif %}">
+      <span class="icon">&#9881;</span> Config
+    </a>
+  </div>
+  <div class="nav-status" id="nav-status">
+    <span class="status-dot dot-idle" id="status-dot"></span>
+    <span id="status-text">Idle</span>
+  </div>
+</nav>
+
+<main>
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in msgs %}
+      <div class="alert alert-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+<script>
+// Live status polling
+async function pollStatus() {
+  try {
+    const r = await fetch("/api/status");
+    const d = await r.json();
+    const running = d.agent.running;
+    const dot  = document.getElementById("status-dot");
+    const text = document.getElementById("status-text");
+    if (dot)  { dot.className  = "status-dot " + (running ? "dot-running" : "dot-idle"); }
+    if (text) { text.textContent = running ? "Running..." : "Idle"; }
+
+    const un = document.getElementById("nav-username");
+    if (un && d.portfolio) {
+      // update any card values if on dashboard
+      _updateCard("cv-cash",   d.portfolio.cash,        true);
+      _updateCard("cv-inv",    d.portfolio.invested,     true);
+      _updateCard("cv-total",  d.portfolio.total_value,  true);
+      _updateCard("cv-pos",    d.portfolio.positions,    false);
+      const pnl = d.portfolio.pnl;
+      const el  = document.getElementById("cv-pnl");
+      if (el && pnl !== null) {
+        el.textContent = (pnl >= 0 ? "+" : "") + "$" + Math.abs(pnl).toFixed(2);
+        el.className   = "card-value " + (pnl >= 0 ? "up" : "down");
+      }
+    }
+  } catch(e) {}
+}
+
+function _updateCard(id, val, isMoney) {
+  const el = document.getElementById(id);
+  if (!el || val === null || val === undefined) return;
+  el.textContent = isMoney
+    ? "$" + parseFloat(val).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2})
+    : val;
+}
+
+setInterval(pollStatus, 8000);
+pollStatus();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

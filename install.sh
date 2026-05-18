@@ -1,46 +1,44 @@
 #!/bin/bash
-# Run once on the Pi to install dependencies and wire up the systemd service.
+# Run once on the Pi to install dependencies and wire up systemd services.
 # Usage: sudo bash install.sh
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-AGENT="$SCRIPT_DIR/trading_agent.py"
-SERVICE_NAME="trading-agent"
-PI_USER="${SUDO_USER:-pi}"   # preserve the non-root user who ran sudo
+PI_USER="${SUDO_USER:-pi}"
 
-echo "==> Installing Python dependencies…"
+echo "==> Installing Python dependencies..."
 pip3 install -r "$SCRIPT_DIR/requirements.txt"
 
-echo "==> Initialising database and encryption key…"
-# Run as the real user so .keyfile and trading_agent.db are owned correctly
-sudo -u "$PI_USER" python3 "$AGENT" config show || true
+echo ""
+echo "==> Initialising database and encryption key..."
+sudo -u "$PI_USER" python3 "$SCRIPT_DIR/trading_agent.py" config show || true
 
 echo ""
 echo "==> First-time setup (run these as $PI_USER):"
-echo "    python3 $AGENT config set-api-key"
-echo "    python3 $AGENT config set game_id 1"
-echo "    python3 $AGENT config set username yourname"
-echo "    python3 $AGENT config set base_url https://stocks.namoh.net"
+echo "    python3 $SCRIPT_DIR/trading_agent.py config set-api-key"
+echo "    python3 $SCRIPT_DIR/trading_agent.py config set game_id 1"
+echo "    python3 $SCRIPT_DIR/trading_agent.py config set username yourname"
+echo "    python3 $SCRIPT_DIR/trading_agent.py config set base_url https://stocks.namoh.net"
 echo ""
-echo "==> Configure run schedule (e.g. market open + midday):"
-echo "    python3 $AGENT schedule add 09:35"
-echo "    python3 $AGENT schedule add 13:00"
+echo "==> Then add a schedule and start the web UI:"
+echo "    python3 $SCRIPT_DIR/trading_agent.py schedule add 09:35"
+echo "    python3 $SCRIPT_DIR/web.py"
 echo ""
 
-# ── systemd service ────────────────────────────────────────────────────────────
-echo "==> Writing systemd service…"
-cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
+# ── Web UI systemd service (includes built-in scheduler) ──────────────────────
+echo "==> Writing systemd service: trading-agent-web..."
+cat > /etc/systemd/system/trading-agent-web.service <<EOF
 [Unit]
-Description=Stock Trading Agent Scheduler
+Description=Stock Trading Agent Web UI
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 ${AGENT} schedule run
+ExecStart=/usr/bin/python3 ${SCRIPT_DIR}/web.py --host 0.0.0.0 --port 5000
 WorkingDirectory=${SCRIPT_DIR}
 Restart=on-failure
-RestartSec=30
+RestartSec=15
 StandardOutput=journal
 StandardError=journal
 User=${PI_USER}
@@ -50,12 +48,11 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable ${SERVICE_NAME}
-systemctl start  ${SERVICE_NAME}
+systemctl enable trading-agent-web
+systemctl start  trading-agent-web
 
 echo ""
-echo "==> Service started!"
-echo "    Status : sudo systemctl status ${SERVICE_NAME}"
-echo "    Logs   : sudo journalctl -u ${SERVICE_NAME} -f"
-echo "    DB logs: python3 ${AGENT} logs --tail 50"
-echo "    History: python3 ${AGENT} history"
+echo "==> Done!"
+echo "    Web UI : http://$(hostname -I | awk '{print $1}'):5000"
+echo "    Status : sudo systemctl status trading-agent-web"
+echo "    Logs   : sudo journalctl -u trading-agent-web -f"

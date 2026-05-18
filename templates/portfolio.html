@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Portfolio — Trading Agent{% endblock %}
+
+{% block content %}
+<div class="page-title">&#9670; Portfolio</div>
+
+{% if snap %}
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Cash</div>
+      <div class="card-value" id="cv-cash">${{ "%.2f"|format(snap.cash) }}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Invested</div>
+      <div class="card-value" id="cv-inv">${{ "%.2f"|format(snap.invested) }}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Positions</div>
+      <div class="card-value" id="cv-pos">{{ snap.positions|length }}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Total Value</div>
+      <div class="card-value" id="cv-total">${{ "%.2f"|format(snap.total_value) }}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">P&amp;L</div>
+      <div class="card-value {% if snap.pnl >= 0 %}up{% else %}down{% endif %}" id="cv-pnl">
+        {{ "%+.2f"|format(snap.pnl) }}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Holdings &mdash; snapshot {{ snap.captured_at[:19] }}</div>
+    {% if snap.positions %}
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th style="text-align:right">Shares</th>
+            <th style="text-align:right">Avg Cost</th>
+            <th style="text-align:right">Curr Price</th>
+            <th style="text-align:right">Value</th>
+            <th style="text-align:right">P&amp;L %</th>
+            <th style="text-align:right">Gain / Loss</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in snap.positions %}
+            {% set sym  = (p.symbol or p.ticker or p.stock or '') | upper %}
+            {% set qty  = (p.quantity or p.shares or 0) | float %}
+            {% set cost = (p.cost_basis or p.avg_price or p.average_price or p.cost or 0) | float %}
+            {% set curr = (p.current_price or p.price or cost) | float %}
+            {% set val  = (p.current_value or p.value or p.market_value or (qty * curr)) | float %}
+            {% set pct  = ((curr - cost) / cost * 100) if cost else 0 %}
+            {% set gain = val - (qty * cost) %}
+            <tr>
+              <td><span class="tk">{{ sym }}</span></td>
+              <td style="text-align:right; font-family:monospace">{{ "%.4f"|format(qty) }}</td>
+              <td style="text-align:right; font-family:monospace">${{ "%.2f"|format(cost) }}</td>
+              <td style="text-align:right; font-family:monospace">${{ "%.2f"|format(curr) }}</td>
+              <td style="text-align:right"><b>${{ "%.2f"|format(val) }}</b></td>
+              <td style="text-align:right" class="{{ 'up' if pct >= 0 else 'dn' }}">
+                {{ "%+.1f"|format(pct) }}%
+              </td>
+              <td style="text-align:right" class="{{ 'up' if gain >= 0 else 'dn' }}">
+                {{ "%+.2f"|format(gain) }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">No open positions.</div>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="panel">
+    <div class="empty">
+      No portfolio snapshot yet. Run the agent first &mdash;
+      <a href="/" style="color:var(--blue)">go to dashboard</a>.
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

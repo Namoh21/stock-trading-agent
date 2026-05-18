@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Config — Trading Agent{% endblock %}
+
+{% block content %}
+<div class="page-title">&#9881; Configuration</div>
+
+<!-- General settings -->
+<div class="panel">
+  <div class="panel-title">General Settings</div>
+  <form method="post" action="/config/save">
+    <div class="form-group">
+      <label>Base URL</label>
+      <input type="text" name="base_url" value="{{ cfg.base_url }}" placeholder="https://stocks.namoh.net">
+    </div>
+    <div class="form-group">
+      <label>Game ID</label>
+      <input type="text" name="game_id" value="{{ cfg.game_id }}" placeholder="1" style="max-width:120px">
+    </div>
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" name="username" value="{{ cfg.username }}" placeholder="your name">
+    </div>
+    <button class="btn btn-primary" type="submit">Save Settings</button>
+  </form>
+</div>
+
+<!-- API Key -->
+<div class="panel">
+  <div class="panel-title">API Key</div>
+  <div style="margin-bottom:12px; font-size:12px; color:var(--muted); line-height:1.7">
+    The key is stored encrypted in the database &mdash; it is never written to any file in plaintext.<br>
+    Current status:&nbsp;
+    {% if cfg.api_key == '********' %}
+      <span class="pill pill-green">Configured</span>
+    {% else %}
+      <span class="pill pill-red">Not set</span>
+    {% endif %}
+  </div>
+  <form method="post" action="/config/set-api-key">
+    <div class="form-group">
+      <label>New API Key</label>
+      <input type="password" name="api_key" placeholder="ska_..." autocomplete="off" style="font-family:monospace">
+    </div>
+    <button class="btn btn-primary" type="submit">Save API Key</button>
+  </form>
+</div>
+
+<!-- Read-only summary -->
+<div class="panel">
+  <div class="panel-title">Current Values</div>
+  <table>
+    <thead><tr><th>Key</th><th>Value</th></tr></thead>
+    <tbody>
+      {% for k, v in cfg.items() %}
+      <tr>
+        <td><span style="color:var(--blue); font-family:monospace">{{ k }}</span></td>
+        <td>
+          {% if v == '********' %}
+            <span class="pill pill-green">Encrypted / set</span>
+          {% elif v %}
+            {{ v }}
+          {% else %}
+            <span class="text-muted">&mdash;</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

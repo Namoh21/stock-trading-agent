@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Trade History — Trading Agent{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="page-title">&#8635; Trade History</div>
+  <div class="spacer"></div>
+  <form method="get" action="/history" style="display:flex; gap:8px; align-items:center">
+    <select name="limit" style="max-width:130px; padding:6px 8px">
+      <option value="50"  {% if limit==50  %}selected{% endif %}>Last 50</option>
+      <option value="100" {% if limit==100 %}selected{% endif %}>Last 100</option>
+      <option value="250" {% if limit==250 %}selected{% endif %}>Last 250</option>
+    </select>
+    <button class="btn" type="submit">Apply</button>
+  </form>
+</div>
+
+<div class="panel">
+  {% if trades %}
+    <table>
+      <thead>
+        <tr>
+          <th>Date / Time</th>
+          <th>Symbol</th>
+          <th>Side</th>
+          <th style="text-align:right">Shares</th>
+          <th style="text-align:right">Price</th>
+          <th style="text-align:right">Total</th>
+          <th style="text-align:center">Score</th>
+          <th>Status</th>
+          <th>Reason</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in trades %}
+        <tr>
+          <td style="color:var(--muted); font-size:11px">{{ t.executed_at[:19] }}</td>
+          <td><span class="tk">{{ t.symbol }}</span></td>
+          <td>
+            {% if t.side == 'buy' %}
+              <span class="pill pill-green">BUY</span>
+            {% else %}
+              <span class="pill pill-red">SELL</span>
+            {% endif %}
+          </td>
+          <td style="text-align:right; font-family:monospace">{{ "%.4f"|format(t.shares) }}</td>
+          <td style="text-align:right; font-family:monospace">
+            {% if t.price %}${{ "%.2f"|format(t.price) }}{% else %}&mdash;{% endif %}
+          </td>
+          <td style="text-align:right; font-family:monospace">
+            {% if t.total %}${{ "%.2f"|format(t.total) }}{% else %}&mdash;{% endif %}
+          </td>
+          <td style="text-align:center">
+            {% if t.score is not none %}
+              <span class="pill {% if t.score >= 70 %}pill-green{% elif t.score >= 45 %}pill-orange{% else %}pill-red{% endif %}">
+                {{ t.score }}
+              </span>
+            {% else %}&mdash;{% endif %}
+          </td>
+          <td>
+            {% if t.status == 'placed' %}
+              <span class="pill pill-green">Placed</span>
+            {% elif t.status == 'failed' %}
+              <span class="pill pill-red">Failed</span>
+            {% else %}
+              <span class="pill pill-gray">{{ t.status }}</span>
+            {% endif %}
+          </td>
+          <td style="color:var(--muted); font-size:11px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+            {{ t.reason or '' }}
+            {% if t.error_msg %}
+              <span class="text-red" title="{{ t.error_msg }}"> [error]</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">No trade history yet. Run the agent to populate.</div>
+  {% endif %}
+</div>
+{% endblock %}

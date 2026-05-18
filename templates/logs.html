@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Logs — Trading Agent{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="page-title">&#9776; Logs</div>
+  <div class="spacer"></div>
+  <form method="get" action="/logs" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+    <select name="level" style="max-width:130px; padding:6px 8px">
+      <option value="" {% if not level %}selected{% endif %}>All levels</option>
+      <option value="INFO"    {% if level=='INFO'    %}selected{% endif %}>INFO</option>
+      <option value="WARNING" {% if level=='WARNING' %}selected{% endif %}>WARNING</option>
+      <option value="ERROR"   {% if level=='ERROR'   %}selected{% endif %}>ERROR</option>
+    </select>
+    <select name="tail" style="max-width:120px; padding:6px 8px">
+      <option value="50"  {% if tail==50  %}selected{% endif %}>Last 50</option>
+      <option value="200" {% if tail==200 %}selected{% endif %}>Last 200</option>
+      <option value="500" {% if tail==500 %}selected{% endif %}>Last 500</option>
+    </select>
+    <button class="btn" type="submit">Filter</button>
+    {% if run_id %}
+      <a href="/logs" class="btn">Clear filter</a>
+      <span class="pill pill-blue">run: {{ run_id }}</span>
+    {% endif %}
+  </form>
+</div>
+
+<div class="panel">
+  <div id="log-container" style="max-height:75vh; overflow-y:auto">
+    {% if rows %}
+      {% for r in rows %}
+        <div class="log-line log-{{ r.level }}">
+          <span style="color:var(--muted)">{{ r.logged_at[:19] }}</span>
+          <span class="pill pill-{% if r.level=='ERROR' %}red{% elif r.level=='WARNING' %}orange{% else %}gray{% endif %}"
+                style="font-size:9px; margin:0 6px">{{ r.level }}</span>
+          <span style="color:var(--muted); font-size:10px">[{{ r.run_id }}]</span>
+          {{ r.message }}
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">No log entries found.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-scroll to bottom on load
+const c = document.getElementById("log-container");
+if (c) c.scrollTop = c.scrollHeight;
+</script>
+{% endblock %}

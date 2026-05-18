@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Schedule — Trading Agent{% endblock %}
+
+{% block content %}
+<div class="page-title">&#9202; Schedule</div>
+
+<!-- Add time -->
+<div class="panel">
+  <div class="panel-title">Add Run Time</div>
+  <p style="font-size:12px; color:var(--muted); margin-bottom:12px; line-height:1.7">
+    Enter a 24-hour local time (HH:MM). The agent will run automatically at each configured
+    time every day while the web server is running.
+  </p>
+  <form method="post" action="/schedule/add" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap">
+    <div class="form-group" style="margin-bottom:0">
+      <label>Time (HH:MM)</label>
+      <input type="time" name="run_time" required style="max-width:160px">
+    </div>
+    <button class="btn btn-primary" type="submit">Add Time</button>
+  </form>
+</div>
+
+<!-- Existing times -->
+<div class="panel">
+  <div class="panel-title">Configured Run Times</div>
+  {% if times %}
+    <table>
+      <thead>
+        <tr><th>Time (local, 24h)</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for t in times %}
+        <tr>
+          <td><span class="pill pill-blue" style="font-size:13px; padding:4px 12px">{{ t }}</span></td>
+          <td style="text-align:right">
+            <form method="post" action="/schedule/remove" style="display:inline">
+              <input type="hidden" name="run_time" value="{{ t }}">
+              <button class="btn btn-danger btn-sm" type="submit"
+                onclick="return confirm('Remove {{ t }}?')">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">No run times configured yet.</div>
+  {% endif %}
+</div>
+
+<!-- Tips -->
+<div class="panel">
+  <div class="panel-title">Suggested Times</div>
+  <div style="font-size:12px; color:var(--muted); line-height:2">
+    <b style="color:var(--text)">09:35</b> &mdash; 5 min after US market open (adjust for your timezone)<br>
+    <b style="color:var(--text)">13:00</b> &mdash; Midday check<br>
+    <b style="color:var(--text)">15:45</b> &mdash; 15 min before market close<br>
+  </div>
+  <div style="margin-top:10px; font-size:11px; color:var(--muted)">
+    Times are local to the machine running the agent. The scheduler checks every 30 seconds,
+    so runs may fire up to 30 seconds late.
+  </div>
+</div>
+{% endblock %}

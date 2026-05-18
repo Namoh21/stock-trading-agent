@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Trading Agent{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="page-title">Dashboard</div>
+  <div class="spacer"></div>
+  {% if state.running %}
+    <span class="pill pill-green">&#9679; Running &mdash; {{ state.run_id }}</span>
+  {% else %}
+    <form method="post" action="/agent/run" style="display:inline">
+      <button class="btn btn-success">&#9654; Run Agent Now</button>
+    </form>
+  {% endif %}
+</div>
+
+<!-- Portfolio cards -->
+<div class="cards">
+  <div class="card">
+    <div class="card-label">Cash</div>
+    <div class="card-value" id="cv-cash">
+      {% if snap %}${{ "%.2f"|format(snap.cash) }}{% else %}&mdash;{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">Invested</div>
+    <div class="card-value" id="cv-inv">
+      {% if snap %}${{ "%.2f"|format(snap.invested) }}{% else %}&mdash;{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">Positions</div>
+    <div class="card-value" id="cv-pos">
+      {% if snap %}{{ snap.positions|length }}{% else %}&mdash;{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">Total Value</div>
+    <div class="card-value" id="cv-total">
+      {% if snap %}${{ "%.2f"|format(snap.total_value) }}{% else %}&mdash;{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">P&amp;L</div>
+    {% if snap %}
+      <div class="card-value {% if snap.pnl >= 0 %}up{% else %}down{% endif %}" id="cv-pnl">
+        {{ "%+.2f"|format(snap.pnl) }}
+      </div>
+    {% else %}
+      <div class="card-value" id="cv-pnl">&mdash;</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Schedule + config info row -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+  <div class="panel" style="margin-bottom:0">
+    <div class="panel-title">&#9202; Scheduled Runs</div>
+    {% if times %}
+      {% for t in times %}
+        <span class="pill pill-blue" style="margin-right:6px; margin-bottom:4px">{{ t }}</span>
+      {% endfor %}
+      <div style="margin-top:8px; font-size:11px; color:var(--muted)">Local time (24h) &mdash; <a href="/schedule" style="color:var(--blue)">manage</a></div>
+    {% else %}
+      <div class="empty" style="padding:8px">No schedule set &mdash; <a href="/schedule" style="color:var(--blue)">add times</a></div>
+    {% endif %}
+  </div>
+  <div class="panel" style="margin-bottom:0">
+    <div class="panel-title">&#9881; Active Config</div>
+    <div style="font-size:12px; line-height:2">
+      <span class="text-muted">Game:</span> <b>{{ cfg.game_id }}</b> &nbsp;
+      <span class="text-muted">User:</span> <b>{{ cfg.username or '&mdash;' }}</b><br>
+      <span class="text-muted">URL:</span> <span style="color:var(--muted)">{{ cfg.base_url }}</span><br>
+      <span class="text-muted">API Key:</span>
+      {% if cfg.api_key == '********' %}
+        <span class="pill pill-green" style="font-size:10px">Set</span>
+      {% else %}
+        <span class="pill pill-red" style="font-size:10px">Not set</span>
+        &mdash; <a href="/config" style="color:var(--blue)">set it</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Holdings -->
+<div class="panel">
+  <div class="panel-title">&#9670; Current Holdings</div>
+  {% if snap and snap.positions %}
+    <table>
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Shares</th>
+          <th>Avg Cost</th>
+          <th>Curr Price</th>
+          <th>Value</th>
+          <th>P&amp;L %</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in snap.positions %}
+          {% set sym   = (p.symbol or p.ticker or p.stock or '') | upper %}
+          {% set qty   = (p.quantity or p.shares or 0) | float %}
+          {% set cost  = (p.cost_basis or p.avg_price or p.average_price or p.cost or 0) | float %}
+          {% set curr  = (p.current_price or p.price or cost) | float %}
+          {% set val   = (p.current_value or p.value or p.market_value or (qty * curr)) | float %}
+          {% set pct   = ((curr - cost) / cost * 100) if cost else 0 %}
+          <tr>
+            <td><span class="tk">{{ sym }}</span></td>
+            <td>{{ "%.4f"|format(qty) }}</td>
+            <td>${{ "%.2f"|format(cost) }}</td>
+            <td>${{ "%.2f"|format(curr) }}</td>
+            <td><b>${{ "%.2f"|format(val) }}</b></td>
+            <td class="{{ 'up' if pct >= 0 else 'dn' }}">{{ "%+.1f"|format(pct) }}%</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">No positions &mdash; run the agent to populate.</div>
+  {% endif %}
+</div>
+
+<!-- Recent log -->
+<div class="panel">
+  <div class="panel-title" style="display:flex; justify-content:space-between">
+    <span>&#9776; Recent Log</span>
+    <a href="/logs" class="btn btn-sm">View All</a>
+  </div>
+  <div id="log-container" style="max-height:260px; overflow-y:auto">
+    {% if recent %}
+      {% for r in recent %}
+        <div class="log-line log-{{ r.level }}">{{ r.logged_at[:19] }}  {{ r.message }}</div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">No logs yet. Run the agent first.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if snap %}
+<div style="font-size:11px; color:var(--muted); margin-top:-8px">
+  Last snapshot: {{ snap.captured_at[:19] }}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// If agent is running, auto-refresh logs every 3 s
+{% if state.running %}
+let _lastLogTs = "";
+async function refreshLogs() {
+  const run_id = "{{ state.run_id or '' }}";
+  const r = await fetch(`/api/logs/recent?run_id=${run_id}&tail=30`);
+  const rows = await r.json();
+  if (!rows.length) return;
+  const container = document.getElementById("log-container");
+  container.innerHTML = rows.map(r =>
+    `<div class="log-line log-${r.level}">${r.logged_at.slice(0,19)}  ${r.message}</div>`
+  ).join("");
+  container.scrollTop = container.scrollHeight;
+}
+setInterval(refreshLogs, 3000);
+{% endif %}
+</script>
+{% endblock %}
