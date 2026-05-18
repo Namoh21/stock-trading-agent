@@ -1,74 +1,266 @@
 #!/bin/bash
-# Run once on the Pi to install dependencies and wire up systemd services.
-# Usage:
-#   sudo bash install.sh               # prompts for port (default 5000)
-#   sudo bash install.sh --port 8080   # set port non-interactively
+# =============================================================================
+#  Stock Trading Agent — Installer
+# =============================================================================
+#  Usage:
+#    sudo bash install.sh               Interactive (recommended)
+#    sudo bash install.sh --port 8080   Set port without prompting
+#    sudo bash install.sh --help        Show this help
+# =============================================================================
 
 set -e
+
+# ── Colours ───────────────────────────────────────────────────────────────────
+RED='\033[0;31m';  GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+BLUE='\033[0;34m'; CYAN='\033[0;36m';  BOLD='\033[1m';  NC='\033[0m'
+
+info()    { echo -e "${CYAN}  →${NC}  $*"; }
+success() { echo -e "${GREEN}  ✔${NC}  $*"; }
+warn()    { echo -e "${YELLOW}  ⚠${NC}  $*"; }
+error()   { echo -e "${RED}  ✘${NC}  $*"; }
+header()  { echo -e "\n${BOLD}${BLUE}══  $*  ${NC}"; }
+divider() { echo -e "${BLUE}──────────────────────────────────────────────────${NC}"; }
+
+# ── Help ──────────────────────────────────────────────────────────────────────
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+  echo ""
+  echo -e "${BOLD}Stock Trading Agent — Installer${NC}"
+  echo ""
+  echo "  Usage:"
+  echo "    sudo bash install.sh               Interactive install (recommended)"
+  echo "    sudo bash install.sh --port 8080   Set web UI port non-interactively"
+  echo ""
+  echo "  Options:"
+  echo "    --port, -p <number>   Web UI port (1–65535). Default: 5000"
+  echo "    --help, -h            Show this help message"
+  echo ""
+  exit 0
+fi
+
+# ── Must run as root ──────────────────────────────────────────────────────────
+if [[ $EUID -ne 0 ]]; then
+  error "This script must be run with sudo."
+  echo  "  Try: sudo bash install.sh"
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PI_USER="${SUDO_USER:-pi}"
+SERVICE_NAME="trading-agent-web"
+DB_FILE="$SCRIPT_DIR/trading_agent.db"
+KEY_FILE="$SCRIPT_DIR/.keyfile"
+REINSTALL=false
+
+# ── Banner ─────────────────────────────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}${BLUE}"
+echo "  ╔══════════════════════════════════════════╗"
+echo "  ║       Stock Trading Agent Installer      ║"
+echo "  ╚══════════════════════════════════════════╝"
+echo -e "${NC}"
+
+# ── Detect re-install ─────────────────────────────────────────────────────────
+if systemctl list-units --full -all 2>/dev/null | grep -q "${SERVICE_NAME}.service"; then
+  REINSTALL=true
+  warn "Existing installation detected."
+  echo ""
+  echo -e "  ${YELLOW}Re-installing will:${NC}"
+  echo "    • Update Python dependencies"
+  echo "    • Update the systemd service (new port if changed)"
+  echo "    • Leave your database and .keyfile untouched"
+  echo ""
+  read -rp "  Continue with re-install? [Y/n]: " CONFIRM
+  CONFIRM="${CONFIRM:-Y}"
+  if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "  Aborted."
+    exit 0
+  fi
+fi
+
+# ── Check Python ──────────────────────────────────────────────────────────────
+header "Checking Requirements"
+
+PYTHON_BIN=""
+for bin in python3 python; do
+  if command -v "$bin" &>/dev/null; then
+    VER=$("$bin" -c "import sys; print(sys.version_info[:2])")
+    if "$bin" -c "import sys; exit(0 if sys.version_info >= (3,10) else 1)" 2>/dev/null; then
+      PYTHON_BIN="$bin"
+      success "Python found: $("$bin" --version)"
+      break
+    else
+      warn "Found $("$bin" --version) — Python 3.10+ required."
+    fi
+  fi
+done
+
+if [[ -z "$PYTHON_BIN" ]]; then
+  error "Python 3.10 or newer is required but was not found."
+  echo ""
+  echo "  Install it with:"
+  echo "    sudo apt update && sudo apt install -y python3 python3-pip"
+  exit 1
+fi
+
+if ! command -v pip3 &>/dev/null && ! "$PYTHON_BIN" -m pip --version &>/dev/null 2>&1; then
+  error "pip not found. Install it with:"
+  echo "    sudo apt install -y python3-pip"
+  exit 1
+fi
+success "pip found"
 
 # ── Port selection ─────────────────────────────────────────────────────────────
-PORT=""
+header "Web UI Port"
 
-# Parse --port argument if provided
+PORT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --port|-p)
-      PORT="$2"; shift 2 ;;
-    --port=*)
-      PORT="${1#*=}"; shift ;;
-    *)
-      echo "Unknown argument: $1"; exit 1 ;;
+    --port|-p) PORT="$2"; shift 2 ;;
+    --port=*)  PORT="${1#*=}"; shift ;;
+    --help|-h) shift ;;
+    *)         error "Unknown argument: $1"; exit 1 ;;
   esac
 done
 
-# Validate a port number
 validate_port() {
   [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
 }
 
-# If not supplied via flag, prompt
-if [ -z "$PORT" ]; then
+is_port_in_use() {
+  ss -tlnp 2>/dev/null | grep -q ":$1 " || \
+  netstat -tlnp 2>/dev/null | grep -q ":$1 " || false
+}
+
+if [[ -n "$PORT" ]]; then
+  if ! validate_port "$PORT"; then
+    error "Invalid port '$PORT'. Must be a number between 1 and 65535."
+    exit 1
+  fi
+else
+  echo -e "  ${CYAN}Which port should the web UI listen on?${NC}"
+  echo "  Common choices: 5000 (default), 8080, 8000, 3000"
+  echo ""
   while true; do
-    read -rp "Enter web UI port [default: 5000]: " PORT
+    read -rp "  Port [default: 5000]: " PORT
     PORT="${PORT:-5000}"
-    if validate_port "$PORT"; then
-      break
+    if ! validate_port "$PORT"; then
+      warn "  '$PORT' is not a valid port. Enter a number between 1 and 65535."
+      continue
+    fi
+    if is_port_in_use "$PORT"; then
+      warn "Port $PORT appears to be in use already."
+      read -rp "  Use it anyway? [y/N]: " FORCE
+      [[ "$FORCE" =~ ^[Yy]$ ]] && break
     else
-      echo "  Invalid port. Enter a number between 1 and 65535."
+      break
     fi
   done
+fi
+
+success "Web UI will be served on port $PORT"
+
+# ── Install dependencies ──────────────────────────────────────────────────────
+header "Installing Python Dependencies"
+
+PIP_CMD=("$PYTHON_BIN" -m pip install -r "$SCRIPT_DIR/requirements.txt" --quiet)
+info "Running: ${PIP_CMD[*]}"
+if "${PIP_CMD[@]}"; then
+  success "All dependencies installed"
 else
-  if ! validate_port "$PORT"; then
-    echo "Invalid port '$PORT'. Must be 1-65535."; exit 1
+  error "pip install failed. Check the output above."
+  exit 1
+fi
+
+# ── Initialise database ───────────────────────────────────────────────────────
+header "Initialising Database"
+
+if [[ -f "$DB_FILE" ]]; then
+  success "Existing database found — keeping your data"
+else
+  info "Creating new database..."
+  sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" config show &>/dev/null || true
+  success "Database created at $DB_FILE"
+fi
+
+if [[ -f "$KEY_FILE" ]]; then
+  success "Encryption keyfile found"
+else
+  info "Generating encryption keyfile (this stores your API key safely)..."
+  sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" config show &>/dev/null || true
+  if [[ -f "$KEY_FILE" ]]; then
+    chmod 600 "$KEY_FILE"
+    success "Keyfile created at $KEY_FILE"
+    warn "Back up $KEY_FILE — losing it makes your stored API key unrecoverable."
   fi
 fi
 
-echo "==> Web UI will run on port $PORT"
+# ── First-time config prompts ─────────────────────────────────────────────────
+if [[ "$REINSTALL" == false ]]; then
+  header "Agent Configuration"
+  echo -e "  ${CYAN}Let's configure the agent. Press Enter to skip any field.${NC}"
+  echo ""
 
-echo "==> Installing Python dependencies..."
-pip3 install -r "$SCRIPT_DIR/requirements.txt"
+  read -rp "  Game ID        [default: 1]: " INPUT_GAME
+  INPUT_GAME="${INPUT_GAME:-1}"
+  sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" config set game_id "$INPUT_GAME"
+  success "Game ID set to $INPUT_GAME"
 
-echo ""
-echo "==> Initialising database and encryption key..."
-sudo -u "$PI_USER" python3 "$SCRIPT_DIR/trading_agent.py" config show || true
+  read -rp "  Username       [optional]:   " INPUT_USER
+  if [[ -n "$INPUT_USER" ]]; then
+    sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" config set username "$INPUT_USER"
+    success "Username set to $INPUT_USER"
+  fi
 
-echo ""
-echo "==> First-time setup (run these as $PI_USER):"
-echo "    python3 $SCRIPT_DIR/trading_agent.py config set-api-key"
-echo "    python3 $SCRIPT_DIR/trading_agent.py config set game_id 1"
-echo "    python3 $SCRIPT_DIR/trading_agent.py config set username yourname"
-echo "    python3 $SCRIPT_DIR/trading_agent.py config set base_url https://stocks.namoh.net"
-echo ""
-echo "==> Then add a schedule and start the web UI:"
-echo "    python3 $SCRIPT_DIR/trading_agent.py schedule add 09:35"
-echo "    python3 $SCRIPT_DIR/web.py"
-echo ""
+  read -rp "  Base URL       [default: https://stocks.namoh.net]: " INPUT_URL
+  INPUT_URL="${INPUT_URL:-https://stocks.namoh.net}"
+  sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" config set base_url "$INPUT_URL"
+  success "Base URL set to $INPUT_URL"
 
-# ── Web UI systemd service (includes built-in scheduler) ──────────────────────
-echo "==> Writing systemd service: trading-agent-web..."
-cat > /etc/systemd/system/trading-agent-web.service <<EOF
+  echo ""
+  echo -e "  ${CYAN}Enter your API key (input hidden, stored encrypted):${NC}"
+  read -rsp "  API Key: " INPUT_KEY
+  echo ""
+  if [[ -n "$INPUT_KEY" ]]; then
+    echo "$INPUT_KEY" | sudo -u "$PI_USER" "$PYTHON_BIN" -c "
+import sys, db
+db.init_db()
+db.config_set('api_key', sys.stdin.read().strip())
+print('  saved')
+" && success "API key saved (encrypted)" || warn "API key not saved — set it later in the web UI Config page"
+  else
+    warn "No API key entered — set it later in the web UI Config page"
+  fi
+
+  # ── Schedule setup ─────────────────────────────────────────────────────────
+  header "Schedule Setup"
+  echo -e "  ${CYAN}When should the agent run automatically? (24-hour local time)${NC}"
+  echo "  You can add more times later in the web UI."
+  echo ""
+  echo "  Suggested: 09:35 (market open), 13:00 (midday), 15:45 (near close)"
+  echo "  Press Enter with no input to skip scheduling for now."
+  echo ""
+
+  while true; do
+    read -rp "  Add a run time HH:MM (or Enter to finish): " INPUT_TIME
+    [[ -z "$INPUT_TIME" ]] && break
+    if [[ "$INPUT_TIME" =~ ^[0-2][0-9]:[0-5][0-9]$ ]]; then
+      sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" schedule add "$INPUT_TIME" &>/dev/null
+      success "Scheduled run added: $INPUT_TIME"
+    else
+      warn "Invalid format — use HH:MM (e.g. 09:35)"
+    fi
+  done
+fi
+
+# ── Systemd service ───────────────────────────────────────────────────────────
+header "Setting Up System Service"
+
+if [[ "$REINSTALL" == true ]]; then
+  info "Stopping existing service..."
+  systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+fi
+
+cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
 [Unit]
 Description=Stock Trading Agent Web UI
 After=network-online.target
@@ -76,7 +268,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 ${SCRIPT_DIR}/web.py --host 0.0.0.0 --port ${PORT}
+ExecStart=${PYTHON_BIN} ${SCRIPT_DIR}/web.py --host 0.0.0.0 --port ${PORT}
 WorkingDirectory=${SCRIPT_DIR}
 Restart=on-failure
 RestartSec=15
@@ -89,11 +281,56 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable trading-agent-web
-systemctl start  trading-agent-web
+systemctl enable "$SERVICE_NAME" &>/dev/null
+systemctl start  "$SERVICE_NAME"
+
+# Brief pause to let Flask start
+sleep 2
+
+if systemctl is-active --quiet "$SERVICE_NAME"; then
+  success "Service is running"
+else
+  warn "Service may not have started. Check with:"
+  echo "    sudo journalctl -u $SERVICE_NAME -n 30"
+fi
+
+# ── Done ──────────────────────────────────────────────────────────────────────
+LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+HOSTNAME=$(hostname)
 
 echo ""
-echo "==> Done!"
-echo "    Web UI : http://$(hostname -I | awk '{print $1}'):${PORT}"
-echo "    Status : sudo systemctl status trading-agent-web"
-echo "    Logs   : sudo journalctl -u trading-agent-web -f"
+divider
+echo -e "${BOLD}${GREEN}  Installation complete!${NC}"
+divider
+echo ""
+echo -e "  ${BOLD}Web UI${NC}"
+echo -e "    ${CYAN}http://${HOSTNAME}.local:${PORT}${NC}"
+if [[ -n "$LOCAL_IP" ]]; then
+  echo -e "    ${CYAN}http://${LOCAL_IP}:${PORT}${NC}"
+fi
+echo ""
+echo -e "  ${BOLD}Service management${NC}"
+echo "    sudo systemctl status  $SERVICE_NAME"
+echo "    sudo systemctl restart $SERVICE_NAME"
+echo "    sudo systemctl stop    $SERVICE_NAME"
+echo ""
+echo -e "  ${BOLD}Live service logs${NC}"
+echo "    sudo journalctl -u $SERVICE_NAME -f"
+echo ""
+
+if [[ "$REINSTALL" == false ]]; then
+  echo -e "  ${BOLD}Next steps${NC}"
+  echo "    1. Open the web UI in your browser"
+  if ! sudo -u "$PI_USER" "$PYTHON_BIN" -c "import db; db.init_db(); exit(0 if db.config_get('api_key') else 1)" 2>/dev/null; then
+    echo "    2. Go to Config and enter your API key"
+    echo "    3. Go to Schedule and set your run times"
+    echo "    4. Click 'Run Agent Now' to test"
+  else
+    echo "    2. Go to Schedule to verify your run times"
+    echo "    3. Click 'Run Agent Now' on the Dashboard to test"
+  fi
+fi
+
+echo ""
+divider
+echo ""
