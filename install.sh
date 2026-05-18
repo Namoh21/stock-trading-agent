@@ -98,16 +98,17 @@ if [[ -z "$PYTHON_BIN" ]]; then
   error "Python 3.10 or newer is required but was not found."
   echo ""
   echo "  Install it with:"
-  echo "    sudo apt update && sudo apt install -y python3 python3-pip"
+  echo "    sudo apt update && sudo apt install -y python3 python3-full python3-pip"
   exit 1
 fi
 
-if ! command -v pip3 &>/dev/null && ! "$PYTHON_BIN" -m pip --version &>/dev/null 2>&1; then
-  error "pip not found. Install it with:"
-  echo "    sudo apt install -y python3-pip"
+# Check python3-venv is available (needed on Debian/Ubuntu/Pi OS)
+if ! "$PYTHON_BIN" -m venv --help &>/dev/null 2>&1; then
+  error "python3-venv module not found. Install it with:"
+  echo "    sudo apt install -y python3-full"
   exit 1
 fi
-success "pip found"
+success "python3-venv available"
 
 # ── Port selection ─────────────────────────────────────────────────────────────
 header "Web UI Port"
@@ -159,12 +160,27 @@ fi
 
 success "Web UI will be served on port $PORT"
 
+# ── Virtual environment ────────────────────────────────────────────────────────
+header "Setting Up Python Environment"
+
+VENV_DIR="$SCRIPT_DIR/.venv"
+
+if [[ -d "$VENV_DIR" ]]; then
+  success "Virtual environment already exists — reusing it"
+else
+  info "Creating virtual environment at $VENV_DIR ..."
+  sudo -u "$PI_USER" "$PYTHON_BIN" -m venv "$VENV_DIR"
+  success "Virtual environment created"
+fi
+
+VENV_PYTHON="$VENV_DIR/bin/python"
+VENV_PIP="$VENV_DIR/bin/pip"
+
 # ── Install dependencies ──────────────────────────────────────────────────────
 header "Installing Python Dependencies"
 
-PIP_CMD=("$PYTHON_BIN" -m pip install -r "$SCRIPT_DIR/requirements.txt" --quiet)
-info "Running: ${PIP_CMD[*]}"
-if "${PIP_CMD[@]}"; then
+info "Installing packages into virtual environment..."
+if sudo -u "$PI_USER" "$VENV_PIP" install -r "$SCRIPT_DIR/requirements.txt" --quiet; then
   success "All dependencies installed"
 else
   error "pip install failed. Check the output above."
@@ -178,7 +194,7 @@ if [[ -f "$DB_FILE" ]]; then
   success "Existing database found — keeping your data"
 else
   info "Creating new database..."
-  sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" config show &>/dev/null || true
+  sudo -u "$PI_USER" "$VENV_PYTHON" "$SCRIPT_DIR/trading_agent.py" config show &>/dev/null || true
   success "Database created at $DB_FILE"
 fi
 
@@ -186,7 +202,7 @@ if [[ -f "$KEY_FILE" ]]; then
   success "Encryption keyfile found"
 else
   info "Generating encryption keyfile (this stores your API key safely)..."
-  sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" config show &>/dev/null || true
+  sudo -u "$PI_USER" "$VENV_PYTHON" "$SCRIPT_DIR/trading_agent.py" config show &>/dev/null || true
   if [[ -f "$KEY_FILE" ]]; then
     chmod 600 "$KEY_FILE"
     success "Keyfile created at $KEY_FILE"
@@ -202,18 +218,18 @@ if [[ "$REINSTALL" == false ]]; then
 
   read -rp "  Game ID        [default: 1]: " INPUT_GAME
   INPUT_GAME="${INPUT_GAME:-1}"
-  sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" config set game_id "$INPUT_GAME"
+  sudo -u "$PI_USER" "$VENV_PYTHON" "$SCRIPT_DIR/trading_agent.py" config set game_id "$INPUT_GAME"
   success "Game ID set to $INPUT_GAME"
 
   read -rp "  Username       [optional]:   " INPUT_USER
   if [[ -n "$INPUT_USER" ]]; then
-    sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" config set username "$INPUT_USER"
+    sudo -u "$PI_USER" "$VENV_PYTHON" "$SCRIPT_DIR/trading_agent.py" config set username "$INPUT_USER"
     success "Username set to $INPUT_USER"
   fi
 
   read -rp "  Base URL       [default: https://stocks.namoh.net]: " INPUT_URL
   INPUT_URL="${INPUT_URL:-https://stocks.namoh.net}"
-  sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" config set base_url "$INPUT_URL"
+  sudo -u "$PI_USER" "$VENV_PYTHON" "$SCRIPT_DIR/trading_agent.py" config set base_url "$INPUT_URL"
   success "Base URL set to $INPUT_URL"
 
   echo ""
@@ -221,7 +237,7 @@ if [[ "$REINSTALL" == false ]]; then
   read -rsp "  API Key: " INPUT_KEY
   echo ""
   if [[ -n "$INPUT_KEY" ]]; then
-    echo "$INPUT_KEY" | sudo -u "$PI_USER" "$PYTHON_BIN" -c "
+    echo "$INPUT_KEY" | sudo -u "$PI_USER" "$VENV_PYTHON" -c "
 import sys, db
 db.init_db()
 db.config_set('api_key', sys.stdin.read().strip())
@@ -244,7 +260,7 @@ print('  saved')
     read -rp "  Add a run time HH:MM (or Enter to finish): " INPUT_TIME
     [[ -z "$INPUT_TIME" ]] && break
     if [[ "$INPUT_TIME" =~ ^[0-2][0-9]:[0-5][0-9]$ ]]; then
-      sudo -u "$PI_USER" "$PYTHON_BIN" "$SCRIPT_DIR/trading_agent.py" schedule add "$INPUT_TIME" &>/dev/null
+      sudo -u "$PI_USER" "$VENV_PYTHON" "$SCRIPT_DIR/trading_agent.py" schedule add "$INPUT_TIME" &>/dev/null
       success "Scheduled run added: $INPUT_TIME"
     else
       warn "Invalid format — use HH:MM (e.g. 09:35)"
@@ -268,7 +284,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${PYTHON_BIN} ${SCRIPT_DIR}/web.py --host 0.0.0.0 --port ${PORT}
+ExecStart=${VENV_PYTHON} ${SCRIPT_DIR}/web.py --host 0.0.0.0 --port ${PORT}
 WorkingDirectory=${SCRIPT_DIR}
 Restart=on-failure
 RestartSec=15
@@ -321,7 +337,7 @@ echo ""
 if [[ "$REINSTALL" == false ]]; then
   echo -e "  ${BOLD}Next steps${NC}"
   echo "    1. Open the web UI in your browser"
-  if ! sudo -u "$PI_USER" "$PYTHON_BIN" -c "import db; db.init_db(); exit(0 if db.config_get('api_key') else 1)" 2>/dev/null; then
+  if ! sudo -u "$PI_USER" "$VENV_PYTHON" -c "import db; db.init_db(); exit(0 if db.config_get('api_key') else 1)" 2>/dev/null; then
     echo "    2. Go to Config and enter your API key"
     echo "    3. Go to Schedule and set your run times"
     echo "    4. Click 'Run Agent Now' to test"

@@ -12,4 +12,4 @@ __pycache__/
 *.pyo
 .env
 venv/
-.venv/
+.venv/        # created by install.sh — contains all pip packages
