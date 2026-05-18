@@ -1,0 +1,15 @@
+# Database and secrets — never commit these
+trading_agent.db
+.keyfile
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
