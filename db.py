@@ -137,6 +137,15 @@ def init_db() -> None:
                 asset_class TEXT DEFAULT 'equity'
             );
         """)
+        # ── Live migrations for existing databases ─────────────────────────────
+        # ALTER TABLE IF NOT EXISTS col is not supported until SQLite 3.37,
+        # so we catch the error when the column already exists.
+        try:
+            conn.execute(
+                "ALTER TABLE stock_scores ADD COLUMN asset_class TEXT DEFAULT 'equity'"
+            )
+        except Exception:
+            pass  # column already exists — nothing to do
 
 
 # ── Config helpers ─────────────────────────────────────────────────────────────
@@ -301,11 +310,6 @@ def get_run_logs(tail: int = 100, level: str | None = None) -> list[dict]:
 
 def save_stock_scores(run_id: str, scored: list[dict]) -> None:
     with get_conn() as conn:
-        # Add asset_class column if upgrading from older schema
-        try:
-            conn.execute("ALTER TABLE stock_scores ADD COLUMN asset_class TEXT DEFAULT 'equity'")
-        except Exception:
-            pass
         conn.executemany(
             """INSERT INTO stock_scores
                (run_id, symbol, price, change_pct, score, upside, rank, asset_class)
