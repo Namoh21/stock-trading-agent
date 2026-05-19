@@ -334,7 +334,7 @@ def run_agent() -> None:
     db.save_portfolio_snapshot(_run_id, cash, invested, pnl, positions)
 
     # -- 2. Discover tickers ----------------------------------------------------
-    logger.info("Discovering stock list…")
+    logger.info("Discovering stock list from API…")
     tickers: list[str] = []
     for ep in [
         "/api/stocks",
@@ -345,6 +345,10 @@ def run_agent() -> None:
     ]:
         try:
             data = _get(session, base_url, ep)
+            # Log what the endpoint actually returned so we can diagnose failures
+            preview = str(data)[:120].replace("\n", " ")
+            logger.info("  %s -> %s", ep, preview)
+
             arr = (
                 data if isinstance(data, list) else
                 data.get("stocks") or data.get("symbols") or
@@ -359,8 +363,11 @@ def run_agent() -> None:
                 tickers = [t for t in tickers if t]
                 logger.info("OK %d tickers from %s", len(tickers), ep)
                 break
-        except Exception:
-            pass
+            else:
+                logger.warning("  %s returned data but no usable ticker array (keys: %s)",
+                               ep, list(data.keys()) if isinstance(data, dict) else type(data).__name__)
+        except Exception as e:
+            logger.warning("  %s failed: %s", ep, e)
 
     if not tickers:
         logger.warning("Using fallback ticker list (%d tickers)", len(FALLBACK_TICKERS))
