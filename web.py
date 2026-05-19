@@ -254,6 +254,29 @@ def portfolio_page():
 
 # ── API — JSON endpoints (used by JS polling) ──────────────────────────────────
 
+@app.route("/blocklist")
+def blocklist_page():
+    return render_template("blocklist.html", entries=db.blocklist_all())
+
+@app.route("/blocklist/add", methods=["POST"])
+def blocklist_add():
+    symbol = request.form.get("symbol", "").strip().upper()
+    reason = request.form.get("reason", "").strip() or "Manually blocked"
+    if not symbol:
+        flash("Symbol is required.", "danger")
+        return redirect(url_for("blocklist_page"))
+    db.blocklist_add(symbol, reason)
+    flash(f"{symbol} added to blocklist.", "success")
+    return redirect(url_for("blocklist_page"))
+
+@app.route("/blocklist/remove", methods=["POST"])
+def blocklist_remove():
+    symbol = request.form.get("symbol", "").strip().upper()
+    db.blocklist_remove(symbol)
+    flash(f"{symbol} removed from blocklist.", "success")
+    return redirect(url_for("blocklist_page"))
+
+
 @app.route("/api/status")
 def api_status():
     snap = db.get_latest_snapshot()

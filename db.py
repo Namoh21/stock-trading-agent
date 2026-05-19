@@ -136,6 +136,12 @@ def init_db() -> None:
                 rank        INTEGER,
                 asset_class TEXT DEFAULT 'equity'
             );
+
+            CREATE TABLE IF NOT EXISTS blocklist (
+                symbol      TEXT PRIMARY KEY,
+                reason      TEXT NOT NULL,
+                added_at    TEXT NOT NULL DEFAULT (datetime('now'))
+            );
         """)
         # ── Live migrations for existing databases ─────────────────────────────
         # ALTER TABLE IF NOT EXISTS col is not supported until SQLite 3.37,
@@ -343,3 +349,35 @@ def get_latest_scores() -> dict[str, list[dict]]:
         else:
             equity.append(d)
     return {"equity": equity[:20], "metals": metals}
+
+
+# ── Blocklist ──────────────────────────────────────────────────────────────────
+
+def blocklist_add(symbol: str, reason: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO blocklist (symbol, reason)
+               VALUES (?, ?)
+               ON CONFLICT(symbol) DO UPDATE SET reason=excluded.reason,
+                                                  added_at=datetime('now')""",
+            (symbol.upper(), reason),
+        )
+
+
+def blocklist_remove(symbol: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM blocklist WHERE symbol=?", (symbol.upper(),))
+
+
+def blocklist_get() -> set[str]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT symbol FROM blocklist").fetchall()
+    return {r["symbol"] for r in rows}
+
+
+def blocklist_all() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT symbol, reason, added_at FROM blocklist ORDER BY added_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]

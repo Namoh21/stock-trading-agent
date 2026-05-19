@@ -50,14 +50,37 @@ MIN_HOLD_GAIN            = -5.0
 ROTATION_GAP_PROFITABLE  = 30
 
 FALLBACK_TICKERS = [
-    "AAPL","MSFT","NVDA","GOOGL","META","AMZN","TSLA","AVGO","ORCL","AMD",
-    "INTC","QCOM","ARM","MU","AMAT","MRVL","SMCI","PLTR","SNOW","NET",
-    "CRWD","DDOG","ZS","MDB","HUBS","COIN","PYPL","SQ","V","MA",
-    "JPM","GS","BAC","LLY","NVO","ABBV","JNJ","MRK","AMGN","GILD",
-    "MRNA","BNTX","REGN","NFLX","DIS","SPOT","UBER","ABNB","BKNG","DASH",
-    "XOM","CVX","COP","OXY","SPY","QQQ","TQQQ","SOXL","ARKK",
-    "RKLB","IONQ","RGTI","QUBT","LUNR","ACHR","JOBY","BBAI",
-    "COST","WMT","HD","NKE","SBUX","MCD","PEP","KO","GOOG","HOOD",
+    # ── Mega-cap tech ──────────────────────────────────────────────────────────
+    "AAPL","MSFT","NVDA","GOOGL","GOOG","META","AMZN","TSLA","AVGO","ORCL",
+    # ── Semiconductors ─────────────────────────────────────────────────────────
+    "AMD","INTC","QCOM","ARM","MU","AMAT","MRVL","SMCI","KLAC","LRCX","ASML",
+    "TXN","ADI","MCHP","ON","SWKS","MPWR","WOLF","NXPI",
+    # ── Software & cloud ───────────────────────────────────────────────────────
+    "CRM","NOW","ADBE","INTU","WDAY","TEAM","ZM","DDOG","SNOW","PLTR",
+    "NET","CRWD","ZS","MDB","HUBS","GTLB","BILL","DOCN","ESTC","CFLT",
+    # ── Fintech & payments ─────────────────────────────────────────────────────
+    "V","MA","PYPL","SQ","COIN","HOOD","AFRM","SOFI","NU","STNE",
+    # ── Big banks & financials ─────────────────────────────────────────────────
+    "JPM","GS","BAC","MS","C","WFC","BLK","SCHW","AXP","SPGI","MCO",
+    # ── Healthcare & pharma ────────────────────────────────────────────────────
+    "LLY","NVO","ABBV","JNJ","MRK","AMGN","GILD","REGN","VRTX","BSX",
+    "BMY","PFE","MRNA","BNTX","DXCM","ISRG","EW","ZBH","HCA",
+    # ── Consumer ──────────────────────────────────────────────────────────────
+    "COST","WMT","AMZN","HD","NKE","SBUX","MCD","PEP","KO","PM",
+    "LULU","CMG","YUM","DPZ","ROST","TJX","LOW","TGT",
+    # ── Media & streaming ──────────────────────────────────────────────────────
+    "NFLX","DIS","SPOT","PARA","WBD","TTWO","EA","RBLX","U",
+    # ── Travel & mobility ─────────────────────────────────────────────────────
+    "UBER","LYFT","ABNB","BKNG","EXPE","MAR","HLT","DAL","UAL","AAL",
+    # ── Energy ────────────────────────────────────────────────────────────────
+    "XOM","CVX","COP","OXY","SLB","HAL","MPC","PSX","VLO","EOG","PXD",
+    # ── ETFs (NYSE/NASDAQ only — PCX excluded) ─────────────────────────────────
+    "SPY","QQQ","IWM","DIA","ARKK","XLK","XLF","XLV","XLE","XLI","XLY","XLP",
+    # ── Space, EV & emerging tech ──────────────────────────────────────────────
+    "RKLB","ASTS","LUNR","ACHR","JOBY","LILM","IONQ","RGTI","QUBT","QBTS",
+    "RIVN","LCID","NIO","LI","XPEV","CHPT","BLNK",
+    # ── AI infrastructure ─────────────────────────────────────────────────────
+    "SMCI","DELL","HPE","PSTG","NTAP","BBAI","SOUN","UPST","AI","CIEN",
 ]
 
 # ── Precious metals universe ────────────────────────────────────────────────────
@@ -267,8 +290,14 @@ def _score(quote: dict, ticker: str) -> dict:
     }
 
 
+_FALLBACK_UPSIDE = 35.0  # what price*1.35 produces — signals no real 52w data
+
 def _composite(s: dict) -> float:
-    return s["score"] * 0.6 + s["upside"] * 0.4
+    # If upside is exactly the fallback value the API returned no 52w high.
+    # Discount it heavily so ranking is driven by momentum score alone.
+    upside = s["upside"]
+    upside_weight = 0.05 if abs(upside - _FALLBACK_UPSIDE) < 0.5 else 0.4
+    return s["score"] * (1 - upside_weight) + upside * upside_weight
 
 
 # -- Core agent run -------------------------------------------------------------
@@ -335,7 +364,7 @@ def run_agent() -> None:
 
     if not tickers:
         logger.warning("Using fallback ticker list (%d tickers)", len(FALLBACK_TICKERS))
-        tickers = FALLBACK_TICKERS
+        tickers = list(FALLBACK_TICKERS)
 
     # Append precious metals tickers if enabled in config
     trade_metals = db.config_get("trade_metals") != "0"
@@ -345,6 +374,13 @@ def run_agent() -> None:
         logger.info("Precious metals enabled — added %d metals tickers", len(metals_to_add))
     else:
         logger.info("Precious metals disabled — skipping metals tickers")
+
+    # Remove permanently blocklisted tickers (e.g. wrong exchange, delisted)
+    blocked = db.blocklist_get()
+    if blocked:
+        before = len(tickers)
+        tickers = [t for t in tickers if t.upper() not in blocked]
+        logger.info("Blocklist: skipping %d ticker(s) — %s", before - len(tickers), ", ".join(sorted(blocked)))
 
     # -- 3. Quote & score -------------------------------------------------------
     logger.info("Quoting %d tickers (stocks + metals)…", len(tickers))
@@ -508,11 +544,16 @@ def run_agent() -> None:
                 c["price"], total, c["score"], "scored buy", "placed",
             )
         except Exception as e:
-            logger.error("✗ BUY %s failed: %s", c["ticker"], e)
+            err = str(e)
+            logger.error("✗ BUY %s failed: %s", c["ticker"], err)
             db.log_trade(
                 _run_id, c["ticker"], "buy", shares,
-                c["price"], total, c["score"], "scored buy", "failed", str(e),
+                c["price"], total, c["score"], "scored buy", "failed", err,
             )
+            # Permanently block tickers rejected for wrong exchange
+            if "not in the allowed markets" in err or "not in allowed markets" in err:
+                db.blocklist_add(c["ticker"], f"Exchange not allowed: {err[err.find('(')+1:err.find(')')] if '(' in err else 'unknown'}")
+                logger.warning("BLOCKED %s permanently — not on an allowed exchange", c["ticker"])
 
     # -- 6. Final snapshot ------------------------------------------------------
     logger.info("Refreshing portfolio…")

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Blocklist — Trading Agent{% endblock %}
+
+{% block content %}
+<div class="page-title">&#9940; Blocklist</div>
+
+<div class="panel">
+  <div class="panel-title">About the Blocklist</div>
+  <p style="font-size:12px; color:var(--muted); line-height:1.8">
+    Tickers on this list are permanently skipped during quoting and will never be bought.
+    The agent adds tickers automatically when an order fails with
+    <em>"not in the allowed markets"</em> (e.g. NYSE Arca / PCX tickers like SOXL that the
+    platform does not support). You can also add tickers manually or remove ones that were
+    blocked by mistake.
+  </p>
+</div>
+
+<!-- Manual add -->
+<div class="panel">
+  <div class="panel-title">Add Ticker</div>
+  <form method="post" action="/blocklist/add" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap">
+    <div class="form-group" style="margin-bottom:0">
+      <label>Ticker Symbol</label>
+      <input type="text" name="symbol" placeholder="e.g. SOXL" style="max-width:160px; text-transform:uppercase">
+    </div>
+    <div class="form-group" style="margin-bottom:0; flex:1; min-width:200px">
+      <label>Reason</label>
+      <input type="text" name="reason" placeholder="e.g. NYSE Arca not supported" style="max-width:400px">
+    </div>
+    <button class="btn btn-danger" type="submit">Block Ticker</button>
+  </form>
+</div>
+
+<!-- Current blocklist -->
+<div class="panel">
+  <div class="panel-title">Blocked Tickers ({{ entries|length }})</div>
+  {% if entries %}
+    <table>
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Reason</th>
+          <th>Blocked At</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in entries %}
+        <tr>
+          <td><span class="tk">{{ e.symbol }}</span></td>
+          <td style="color:var(--muted); font-size:12px">{{ e.reason }}</td>
+          <td style="color:var(--muted); font-size:11px">{{ e.added_at | localtime }}</td>
+          <td style="text-align:right">
+            <form method="post" action="/blocklist/remove" style="display:inline">
+              <input type="hidden" name="symbol" value="{{ e.symbol }}">
+              <button class="btn btn-sm" type="submit"
+                onclick="return confirm('Unblock {{ e.symbol }}?')">Unblock</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">No tickers blocked yet. The agent will add tickers here automatically when orders fail due to exchange restrictions.</div>
+  {% endif %}
+</div>
+{% endblock %}
