@@ -27,6 +27,7 @@ History & diagnostics:
 """
 
 import sys
+import math
 import uuid
 import signal
 import getpass
@@ -74,8 +75,9 @@ FALLBACK_TICKERS = [
     "UBER","LYFT","ABNB","BKNG","EXPE","MAR","HLT","DAL","UAL","AAL",
     # ── Energy ────────────────────────────────────────────────────────────────
     "XOM","CVX","COP","OXY","SLB","HAL","MPC","PSX","VLO","EOG","PXD",
-    # ── ETFs (NYSE/NASDAQ only — PCX excluded) ─────────────────────────────────
-    "SPY","QQQ","IWM","DIA","ARKK","XLK","XLF","XLV","XLE","XLI","XLY","XLP",
+    # ── ETFs — NASDAQ-listed only (NYSE Arca / PCX not supported by platform) ──
+    # QQQ = NASDAQ. SPY/IWM/DIA/XL*/ARKK are all NYSE Arca (PCX) — excluded.
+    "QQQ",
     # ── Space, EV & emerging tech ──────────────────────────────────────────────
     "RKLB","ASTS","LUNR","ACHR","JOBY","LILM","IONQ","RGTI","QUBT","QBTS",
     "RIVN","LCID","NIO","LI","XPEV","CHPT","BLNK",
@@ -84,19 +86,20 @@ FALLBACK_TICKERS = [
 ]
 
 # ── Precious metals universe ────────────────────────────────────────────────────
-# ETFs track spot price directly and move ~0.5–2 % on strong days.
-# Scoring thresholds are scaled down so a 2 % gold day ranks like a 5 % stock day.
+# Scoring thresholds for ETFs are scaled down so a 2% gold day ranks like a 5% stock day.
+#
+# Exchange note: most physical metal ETFs (GLD, SLV, IAU, etc.) trade on NYSE Arca (PCX)
+# which this platform does NOT support. They will auto-block on first order attempt.
+# Miners below (NEM, GOLD, AEM…) trade on NYSE/NASDAQ and work fine.
+# OUNZ (VanEck) is NYSE-listed — the one physical ETF that should work.
 METALS_ETFS: set[str] = {
-    "GLD",  # SPDR Gold Shares — largest gold ETF
-    "IAU",  # iShares Gold Trust
-    "GLDM", # SPDR Gold MiniShares
-    "SGOL", # Aberdeen Physical Gold
-    "OUNZ", # VanEck Merk Gold
-    "BAR",  # GraniteShares Gold
-    "SLV",  # iShares Silver Trust
-    "SIVR", # Aberdeen Physical Silver
-    "PPLT", # Aberdeen Physical Platinum
-    "PALL", # Aberdeen Physical Palladium
+    "OUNZ", # VanEck Merk Gold — NYSE listed (others are PCX, will auto-block)
+    "GLD",  # SPDR Gold — NYSE Arca (PCX) — will auto-block on first attempt
+    "IAU",  # iShares Gold — NYSE Arca (PCX)
+    "GLDM", # SPDR Gold Mini — NYSE Arca (PCX)
+    "SLV",  # iShares Silver — NYSE Arca (PCX)
+    "PPLT", # Aberdeen Platinum — NYSE Arca (PCX)
+    "PALL", # Aberdeen Palladium — NYSE Arca (PCX)
 }
 
 # Miners are leveraged to metal prices and move 2–5 % — scored like volatile stocks.
@@ -532,8 +535,12 @@ def run_agent() -> None:
         if filled >= slots or avail_cash < 10:
             break
         remaining = slots - filled
-        allocate  = min(MAX_PER_POS, avail_cash // remaining)
-        shares    = round(allocate / c["price"], 4)
+        # Leave a $2 buffer per slot to absorb price drift between quote and fill
+        allocate  = min(MAX_PER_POS, avail_cash // remaining) - 2
+        if allocate <= 0:
+            continue
+        # Floor shares (never round up) to ensure cost stays at or below allocate
+        shares    = math.floor(allocate / c["price"] * 10000) / 10000
         if shares < 0.0001:
             continue
         total = round(shares * c["price"], 2)

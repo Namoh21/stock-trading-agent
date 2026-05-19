@@ -300,12 +300,15 @@ def log_run(run_id: str, level: str, message: str) -> None:
 
 
 def get_run_logs(tail: int = 100, level: str | None = None) -> list[dict]:
-    query = "SELECT logged_at, level, run_id, message FROM run_logs"
+    # Order by id (auto-increment) not logged_at — SQLite datetime('now') has
+    # only 1-second resolution so multiple events in the same second get
+    # random ordering when sorted by timestamp alone.
+    query = "SELECT id, logged_at, level, run_id, message FROM run_logs"
     params: list = []
     if level:
         query += " WHERE level=?"
         params.append(level.upper())
-    query += " ORDER BY logged_at DESC LIMIT ?"
+    query += " ORDER BY id DESC LIMIT ?"
     params.append(tail)
     with get_conn() as conn:
         rows = conn.execute(query, params).fetchall()
