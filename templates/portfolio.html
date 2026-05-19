@@ -31,7 +31,7 @@
   </div>
 
   <div class="panel">
-    <div class="panel-title">Holdings &mdash; snapshot {{ snap.captured_at[:19] }}</div>
+    <div class="panel-title">Holdings &mdash; snapshot {{ snap.captured_at | localtime }} {{ tz_name }}</div>
     {% if snap.positions %}
       <table>
         <thead>

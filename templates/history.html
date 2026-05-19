@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="row">
-  <div class="page-title">&#8635; Trade History</div>
+  <div class="page-title">&#8635; Trade History <span style="font-size:12px;font-weight:400;color:var(--muted)">— times shown in {{ tz_name }}</span></div>
   <div class="spacer"></div>
   <form method="get" action="/history" style="display:flex; gap:8px; align-items:center">
     <select name="limit" style="max-width:130px; padding:6px 8px">
@@ -34,7 +34,7 @@
       <tbody>
         {% for t in trades %}
         <tr>
-          <td style="color:var(--muted); font-size:11px">{{ t.executed_at[:19] }}</td>
+          <td style="color:var(--muted); font-size:11px">{{ t.executed_at | localtime }}</td>
           <td><span class="tk">{{ t.symbol }}</span></td>
           <td>
             {% if t.side == 'buy' %}

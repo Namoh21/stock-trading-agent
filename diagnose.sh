@@ -194,6 +194,31 @@ if [[ -f "$DB" ]]; then
   info "Current configuration:"
   cd "$INSTALL_DIR"
   $PYTHON trading_agent.py config show 2>/dev/null | sed 's/^/       /' || warn "Could not read config"
+
+  echo ""
+  info "Timezone verification:"
+  $PYTHON -W ignore -c "
+import sys, os
+sys.path.insert(0, '$INSTALL_DIR')
+import db
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from datetime import datetime, timezone
+
+db.init_db()
+tz_name = db.config_get('timezone') or 'America/New_York'
+try:
+    tz = ZoneInfo(tz_name)
+    now_utc   = datetime.now(tz=timezone.utc)
+    now_local = now_utc.astimezone(tz)
+    print(f'       Configured TZ : {tz_name}')
+    print(f'       UTC now        : {now_utc.strftime(\"%Y-%m-%d %H:%M:%S\")} UTC')
+    print(f'       Local now      : {now_local.strftime(\"%Y-%m-%d %H:%M:%S %Z\")}')
+    print(f'       System clock   : {datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")} (system local)')
+except ZoneInfoNotFoundError:
+    print(f'  [FAIL] Timezone \"{tz_name}\" not found — tzdata may not be installed')
+    print('         Fix: sudo apt install -y tzdata')
+    sys.exit(1)
+" || fail "Timezone check failed"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

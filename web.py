@@ -14,7 +14,8 @@ Access from any device on the same network:
 import argparse
 import threading
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import (
     Flask, render_template, request, redirect,
@@ -27,6 +28,35 @@ import trading_agent as agent
 # ── App setup ──────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = "tA-w3b-s3cr3t-ch4ng3-m3"
+
+# ── Timezone helpers ───────────────────────────────────────────────────────────
+
+def get_tz() -> ZoneInfo:
+    """Return the configured timezone, falling back to UTC on bad config."""
+    tz_name = db.config_get("timezone") or "America/New_York"
+    try:
+        return ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, KeyError):
+        return ZoneInfo("UTC")
+
+def now_local() -> datetime:
+    return datetime.now(tz=get_tz())
+
+@app.template_filter("localtime")
+def localtime_filter(utc_str: str, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """Convert a UTC ISO string from the DB into the configured local timezone."""
+    if not utc_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+        return dt.astimezone(get_tz()).strftime(fmt)
+    except (ValueError, TypeError):
+        return utc_str[:19]
+
+@app.context_processor
+def inject_tz():
+    """Make tz_name available in every template."""
+    return {"tz_name": db.config_get("timezone") or "America/New_York"}
 
 db.init_db()
 
@@ -49,9 +79,9 @@ _scheduler_stop   = threading.Event()
 
 def _scheduler_loop() -> None:
     fired_today: set[str] = set()
-    last_date = datetime.now().date()
+    last_date = now_local().date()
     while not _scheduler_stop.is_set():
-        now = datetime.now()
+        now = now_local()
         if now.date() != last_date:
             fired_today.clear()
             last_date = now.date()
@@ -72,7 +102,7 @@ def _run_agent_background(triggered_by: str = "manual") -> str | None:
             _lock.release()
             return None
         _agent_state["running"]    = True
-        _agent_state["started_at"] = datetime.now().isoformat()
+        _agent_state["started_at"] = now_local().strftime("%Y-%m-%d %H:%M:%S %Z")
 
         def _run():
             try:
@@ -81,7 +111,7 @@ def _run_agent_background(triggered_by: str = "manual") -> str | None:
                 logging.getLogger("agent").error("Agent error: %s", e)
             finally:
                 _agent_state["running"]       = False
-                _agent_state["last_finished"] = datetime.now().isoformat()
+                _agent_state["last_finished"] = now_local().strftime("%Y-%m-%d %H:%M:%S %Z")
                 _lock.release()
 
         t = threading.Thread(target=_run, daemon=True)
@@ -138,6 +168,14 @@ def config_save():
         val = request.form.get(key, "").strip()
         if val:
             db.config_set(key, val)
+    tz = request.form.get("timezone", "").strip()
+    if tz:
+        try:
+            ZoneInfo(tz)  # validate before saving
+            db.config_set("timezone", tz)
+        except (ZoneInfoNotFoundError, KeyError):
+            flash(f"Unknown timezone '{tz}' — not saved. Use an IANA name like America/New_York.", "warning")
+            return redirect(url_for("config_page"))
     flash("Configuration saved.", "success")
     return redirect(url_for("config_page"))
 

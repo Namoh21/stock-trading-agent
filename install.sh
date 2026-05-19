@@ -91,10 +91,11 @@ header "Step 1/5 — System Packages"
 apt-get update -qq
 
 PACKAGES=(
-  python3          # runtime
-  python3-requests # HTTP client
-  python3-flask    # web framework
+  python3               # runtime
+  python3-requests      # HTTP client
+  python3-flask         # web framework
   python3-cryptography  # API key encryption
+  tzdata                # IANA timezone database (needed by zoneinfo)
 )
 
 info "Installing: ${PACKAGES[*]}"

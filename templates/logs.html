@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="row">
-  <div class="page-title">&#9776; Logs</div>
+  <div class="page-title">&#9776; Logs <span style="font-size:12px;font-weight:400;color:var(--muted)">— times shown in {{ tz_name }}</span></div>
   <div class="spacer"></div>
   <form method="get" action="/logs" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
     <select name="level" style="max-width:130px; padding:6px 8px">
@@ -30,7 +30,7 @@
     {% if rows %}
       {% for r in rows %}
         <div class="log-line log-{{ r.level }}">
-          <span style="color:var(--muted)">{{ r.logged_at[:19] }}</span>
+          <span style="color:var(--muted)">{{ r.logged_at | localtime }}</span>
           <span class="pill pill-{% if r.level=='ERROR' %}red{% elif r.level=='WARNING' %}orange{% else %}gray{% endif %}"
                 style="font-size:9px; margin:0 6px">{{ r.level }}</span>
           <span style="color:var(--muted); font-size:10px">[{{ r.run_id }}]</span>

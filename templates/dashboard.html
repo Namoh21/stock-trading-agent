@@ -130,7 +130,7 @@
   <div id="log-container" style="max-height:260px; overflow-y:auto">
     {% if recent %}
       {% for r in recent %}
-        <div class="log-line log-{{ r.level }}">{{ r.logged_at[:19] }}  {{ r.message }}</div>
+        <div class="log-line log-{{ r.level }}">{{ r.logged_at | localtime }}  {{ r.message }}</div>
       {% endfor %}
     {% else %}
       <div class="empty">No logs yet. Run the agent first.</div>
@@ -140,7 +140,7 @@
 
 {% if snap %}
 <div style="font-size:11px; color:var(--muted); margin-top:-8px">
-  Last snapshot: {{ snap.captured_at[:19] }}
+  Last snapshot: {{ snap.captured_at | localtime }} {{ tz_name }}
 </div>
 {% endif %}
 {% endblock %}
@@ -157,7 +157,7 @@ async function refreshLogs() {
   if (!rows.length) return;
   const container = document.getElementById("log-container");
   container.innerHTML = rows.map(r =>
-    `<div class="log-line log-${r.level}">${r.logged_at.slice(0,19)}  ${r.message}</div>`
+    `<div class="log-line log-${r.level}">${r.logged_at}  ${r.message}</div>`
   ).join("");
   container.scrollTop = container.scrollHeight;
 }

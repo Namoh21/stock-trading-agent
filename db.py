@@ -147,6 +147,7 @@ _DEFAULTS: dict[str, str] = {
     "game_id":   "1",
     "username":  "",
     "api_key":   "",
+    "timezone":  "America/New_York",
 }
 
 

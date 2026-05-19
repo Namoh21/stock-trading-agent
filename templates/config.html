@@ -20,6 +20,32 @@
       <label>Username</label>
       <input type="text" name="username" value="{{ cfg.username }}" placeholder="your name">
     </div>
+    <div class="form-group">
+      <label>Timezone</label>
+      <select name="timezone" style="max-width:280px">
+        {% set common_tzs = [
+          ("America/New_York",    "Eastern  (ET) — New York"),
+          ("America/Chicago",     "Central  (CT) — Chicago"),
+          ("America/Denver",      "Mountain (MT) — Denver"),
+          ("America/Phoenix",     "Mountain (MST, no DST) — Phoenix"),
+          ("America/Los_Angeles", "Pacific  (PT) — Los Angeles"),
+          ("America/Anchorage",   "Alaska   (AKT) — Anchorage"),
+          ("Pacific/Honolulu",    "Hawaii   (HT) — Honolulu"),
+          ("UTC",                 "UTC"),
+        ] %}
+        {% for tz_val, tz_label in common_tzs %}
+          <option value="{{ tz_val }}" {% if cfg.timezone == tz_val %}selected{% endif %}>
+            {{ tz_label }}
+          </option>
+        {% endfor %}
+      </select>
+      <div style="margin-top:6px; font-size:11px; color:var(--muted)">
+        Controls schedule fire times and all displayed timestamps.
+        Current: <b style="color:var(--blue)">{{ cfg.timezone or 'America/New_York' }}</b>
+        &nbsp;&mdash;&nbsp; Now: <b style="color:var(--text)">{{ tz_name }}</b>
+        &nbsp;&mdash;&nbsp; Server clock: <b id="server-now" style="color:var(--text)"></b>
+      </div>
+    </div>
     <button class="btn btn-primary" type="submit">Save Settings</button>
   </form>
 </div>
@@ -44,6 +70,17 @@
     <button class="btn btn-primary" type="submit">Save API Key</button>
   </form>
 </div>
+
+{% block scripts %}
+<script>
+function updateClock() {
+  const el = document.getElementById("server-now");
+  if (el) el.textContent = new Date().toLocaleTimeString("en-US", {timeZoneName:"short"});
+}
+setInterval(updateClock, 1000);
+updateClock();
+</script>
+{% endblock %}
 
 <!-- Read-only summary -->
 <div class="panel">

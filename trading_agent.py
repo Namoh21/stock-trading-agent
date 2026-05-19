@@ -34,6 +34,7 @@ import logging
 import argparse
 import time as _time
 from datetime import datetime, time as dtime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
@@ -476,11 +477,18 @@ def run_scheduler() -> None:
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT,  _stop)
 
+    def _local_now() -> datetime:
+        tz_name = db.config_get("timezone") or "America/New_York"
+        try:
+            return datetime.now(tz=ZoneInfo(tz_name))
+        except (ZoneInfoNotFoundError, KeyError):
+            return datetime.now(tz=ZoneInfo("UTC"))
+
     fired_today: set[str] = set()
-    last_date = datetime.now().date()
+    last_date = _local_now().date()
 
     while _running:
-        now = datetime.now()
+        now = _local_now()
         # Reset fired set at midnight
         if now.date() != last_date:
             fired_today.clear()
