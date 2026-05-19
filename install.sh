@@ -239,6 +239,16 @@ else
   exit 1
 fi
 
+# ── Firewall ──────────────────────────────────────────────────────────────────
+if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "^Status: active"; then
+  if ufw status 2>/dev/null | grep -q "^${PORT}"; then
+    ok "ufw: port $PORT already allowed"
+  else
+    ufw allow "${PORT}/tcp" > /dev/null
+    ok "ufw: allowed port $PORT"
+  fi
+fi
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 

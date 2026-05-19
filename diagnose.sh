@@ -126,7 +126,7 @@ else
   fail "python3 not found"
 fi
 
-$PYTHON - 2>&1 <<'PYCHECK'
+$PYTHON -W ignore::DeprecationWarning - 2>&1 <<'PYCHECK'
 import sys
 results = {}
 for mod in ("requests", "flask", "cryptography", "sqlite3"):

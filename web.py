@@ -253,6 +253,9 @@ def main():
         t.start()
         print(f"[scheduler] Running in background. Times: {db.schedule_list() or '(none set)'}")
 
+    import logging
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)  # suppress dev-server warning
+
     print(f"[web] Starting on http://{args.host}:{args.port}")
     app.run(host=args.host, port=args.port, debug=False, use_reloader=False)
 
