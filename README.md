@@ -22,15 +22,9 @@ All configuration, trade history, logs, and portfolio snapshots are stored in a 
 | Requirement | Version |
 |---|---|
 | Python | 3.10 or newer |
-| python3-full | for `venv` support (Raspberry Pi OS / Debian) |
-| OS | Raspberry Pi OS, Ubuntu, Debian, macOS, Windows |
+| OS | Raspberry Pi OS, Ubuntu, Debian (primary); macOS/Windows for dev |
 
-The installer creates a **virtual environment** (`.venv/`) automatically — no system-wide pip installs, no `externally-managed-environment` errors.
-
-Python packages (installed automatically into the venv):
-- `requests` — HTTP calls to the trading API
-- `cryptography` — Fernet encryption for the API key
-- `flask` — web interface
+The installer uses **`apt`** to install Python packages — no pip, no venv, no `externally-managed-environment` errors. All three packages (`python3-requests`, `python3-flask`, `python3-cryptography`) are in the standard Raspberry Pi OS / Debian repository.
 
 ---
 
@@ -226,14 +220,6 @@ sudo journalctl -u trading-agent-web -f     # live service logs
 ---
 
 ## Troubleshooting
-
-**`externally-managed-environment` error during install**
-- Your Pi OS blocks system-wide pip installs (PEP 668). The installer handles this by using a virtual environment automatically.
-- If you see this error, make sure `python3-full` is installed:
-  ```bash
-  sudo apt install -y python3-full
-  sudo bash install.sh
-  ```
 
 **Web UI not loading**
 - Check the service is running: `sudo systemctl status trading-agent-web`
