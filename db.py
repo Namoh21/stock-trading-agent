@@ -133,7 +133,8 @@ def init_db() -> None:
                 change_pct  REAL,
                 score       INTEGER,
                 upside      REAL,
-                rank        INTEGER
+                rank        INTEGER,
+                asset_class TEXT DEFAULT 'equity'
             );
         """)
 
@@ -143,11 +144,12 @@ def init_db() -> None:
 _SENSITIVE_KEYS = {"api_key"}
 
 _DEFAULTS: dict[str, str] = {
-    "base_url":  "https://stocks.namoh.net",
-    "game_id":   "1",
-    "username":  "",
-    "api_key":   "",
-    "timezone":  "America/New_York",
+    "base_url":     "https://stocks.namoh.net",
+    "game_id":      "1",
+    "username":     "",
+    "api_key":      "",
+    "timezone":     "America/New_York",
+    "trade_metals": "1",   # "1" = enabled, "0" = disabled
 }
 
 
@@ -299,12 +301,41 @@ def get_run_logs(tail: int = 100, level: str | None = None) -> list[dict]:
 
 def save_stock_scores(run_id: str, scored: list[dict]) -> None:
     with get_conn() as conn:
+        # Add asset_class column if upgrading from older schema
+        try:
+            conn.execute("ALTER TABLE stock_scores ADD COLUMN asset_class TEXT DEFAULT 'equity'")
+        except Exception:
+            pass
         conn.executemany(
             """INSERT INTO stock_scores
-               (run_id, symbol, price, change_pct, score, upside, rank)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (run_id, symbol, price, change_pct, score, upside, rank, asset_class)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             [
-                (run_id, s["ticker"], s["price"], s["chg"], s["score"], s["upside"], i + 1)
-                for i, s in enumerate(scored[:50])
+                (run_id, s["ticker"], s["price"], s["chg"], s["score"],
+                 s["upside"], i + 1, s.get("asset_class", "equity"))
+                for i, s in enumerate(scored[:80])
             ],
         )
+
+
+def get_latest_scores() -> dict[str, list[dict]]:
+    """Return the most recent run's scored tickers split by asset class."""
+    with get_conn() as conn:
+        latest = conn.execute(
+            "SELECT run_id FROM stock_scores ORDER BY scored_at DESC LIMIT 1"
+        ).fetchone()
+        if not latest:
+            return {"equity": [], "metals": []}
+        rows = conn.execute(
+            """SELECT symbol, price, change_pct, score, upside, asset_class
+               FROM stock_scores WHERE run_id=? ORDER BY rank""",
+            (latest["run_id"],),
+        ).fetchall()
+    equity, metals = [], []
+    for r in rows:
+        d = dict(r)
+        if d["asset_class"] in ("metal_etf", "metal_miner"):
+            metals.append(d)
+        else:
+            equity.append(d)
+    return {"equity": equity[:20], "metals": metals}

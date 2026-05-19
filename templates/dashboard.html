@@ -121,6 +121,65 @@
   {% endif %}
 </div>
 
+<!-- Rankings: equities + metals side by side -->
+{% if top_scores.equity or top_scores.metals %}
+<div style="display:grid; grid-template-columns:{% if top_scores.metals %}1fr 1fr{% else %}1fr{% endif %}; gap:10px; margin-bottom:16px">
+
+  <!-- Top equities -->
+  <div class="panel" style="margin-bottom:0">
+    <div class="panel-title">&#9650; Top Ranked Equities</div>
+    {% if top_scores.equity %}
+    <table>
+      <thead><tr><th>#</th><th>Ticker</th><th>Price</th><th>Day %</th><th>Score</th><th>Upside</th></tr></thead>
+      <tbody>
+        {% for s in top_scores.equity[:10] %}
+        <tr>
+          <td style="color:var(--muted)">{{ loop.index }}</td>
+          <td><span class="tk">{{ s.symbol }}</span></td>
+          <td>${{ "%.2f"|format(s.price) }}</td>
+          <td class="{{ 'up' if s.change_pct >= 0 else 'dn' }}">{{ "%+.1f"|format(s.change_pct) }}%</td>
+          <td><span class="pill {% if s.score >= 70 %}pill-green{% elif s.score >= 45 %}pill-orange{% else %}pill-red{% endif %}">{{ s.score }}</span></td>
+          <td class="{{ 'up' if s.upside > 0 else '' }}">{{ "%.0f"|format(s.upside) }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="empty">No data yet — run the agent first.</div>
+    {% endif %}
+  </div>
+
+  <!-- Top metals -->
+  {% if top_scores.metals %}
+  <div class="panel" style="margin-bottom:0">
+    <div class="panel-title" style="color:#c8a96e">&#9670; Top Ranked Precious Metals</div>
+    <table>
+      <thead><tr><th>#</th><th>Ticker</th><th>Type</th><th>Price</th><th>Day %</th><th>Score</th></tr></thead>
+      <tbody>
+        {% for s in top_scores.metals %}
+        <tr>
+          <td style="color:var(--muted)">{{ loop.index }}</td>
+          <td><span class="tk">{{ s.symbol }}</span></td>
+          <td>
+            {% if s.asset_class == 'metal_etf' %}
+              <span class="pill pill-orange" style="font-size:9px">ETF</span>
+            {% else %}
+              <span class="pill pill-gray" style="font-size:9px">Miner</span>
+            {% endif %}
+          </td>
+          <td>${{ "%.2f"|format(s.price) }}</td>
+          <td class="{{ 'up' if s.change_pct >= 0 else 'dn' }}">{{ "%+.1f"|format(s.change_pct) }}%</td>
+          <td><span class="pill {% if s.score >= 70 %}pill-green{% elif s.score >= 45 %}pill-orange{% else %}pill-red{% endif %}">{{ s.score }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+{% endif %}
+
 <!-- Recent log -->
 <div class="panel">
   <div class="panel-title" style="display:flex; justify-content:space-between">

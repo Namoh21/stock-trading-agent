@@ -60,6 +60,43 @@ FALLBACK_TICKERS = [
     "COST","WMT","HD","NKE","SBUX","MCD","PEP","KO","GOOG","HOOD",
 ]
 
+# ── Precious metals universe ────────────────────────────────────────────────────
+# ETFs track spot price directly and move ~0.5–2 % on strong days.
+# Scoring thresholds are scaled down so a 2 % gold day ranks like a 5 % stock day.
+METALS_ETFS: set[str] = {
+    "GLD",  # SPDR Gold Shares — largest gold ETF
+    "IAU",  # iShares Gold Trust
+    "GLDM", # SPDR Gold MiniShares
+    "SGOL", # Aberdeen Physical Gold
+    "OUNZ", # VanEck Merk Gold
+    "BAR",  # GraniteShares Gold
+    "SLV",  # iShares Silver Trust
+    "SIVR", # Aberdeen Physical Silver
+    "PPLT", # Aberdeen Physical Platinum
+    "PALL", # Aberdeen Physical Palladium
+}
+
+# Miners are leveraged to metal prices and move 2–5 % — scored like volatile stocks.
+METALS_MINERS: set[str] = {
+    "GDX",  # VanEck Gold Miners ETF
+    "GDXJ", # VanEck Junior Gold Miners ETF
+    "NEM",  # Newmont — world's largest gold miner
+    "GOLD", # Barrick Gold
+    "AEM",  # Agnico Eagle
+    "WPM",  # Wheaton Precious Metals (streaming)
+    "FNV",  # Franco-Nevada (streaming)
+    "RGLD", # Royal Gold (streaming)
+    "KGC",  # Kinross Gold
+    "AGI",  # Alamos Gold
+    "BTG",  # B2Gold
+    "SIL",  # Global X Silver Miners ETF
+    "PAAS", # Pan American Silver
+    "HL",   # Hecla Mining
+    "CDE",  # Coeur Mining
+}
+
+METALS_TICKERS: set[str] = METALS_ETFS | METALS_MINERS
+
 # -- Logging --------------------------------------------------------------------
 # Console-only; structured records go to the DB via DBHandler.
 
@@ -182,15 +219,21 @@ def _score(quote: dict, ticker: str) -> dict:
         quote.get("avg_volume") or vol
     )
 
+    # Metal ETFs track spot price directly and move much less than equities.
+    # Scale momentum thresholds down by 0.4x so a +2 % gold day scores like
+    # a +5 % stock day, keeping them competitive in the ranking.
+    is_metal_etf = ticker in METALS_ETFS
+    t = 0.4 if is_metal_etf else 1.0   # threshold scale factor
+
     sc = 50
-    if   chg >  5: sc += 25
-    elif chg >  3: sc += 18
-    elif chg >  1: sc += 10
-    elif chg >  0: sc +=  4
-    elif chg < -5: sc -= 25
-    elif chg < -3: sc -= 18
-    elif chg < -1: sc -= 10
-    elif chg <  0: sc -=  4
+    if   chg >  5*t: sc += 25
+    elif chg >  3*t: sc += 18
+    elif chg >  1*t: sc += 10
+    elif chg >    0: sc +=  4
+    elif chg < -5*t: sc -= 25
+    elif chg < -3*t: sc -= 18
+    elif chg < -1*t: sc -= 10
+    elif chg <    0: sc -=  4
 
     rng = h52 - l52
     if rng > 0:
@@ -205,12 +248,22 @@ def _score(quote: dict, ticker: str) -> dict:
         sc += 8
 
     upside = (h52 - price) / price * 100 if h52 > price else 0.0
+
+    # Tag the asset class for display and reporting
+    if ticker in METALS_ETFS:
+        asset_class = "metal_etf"
+    elif ticker in METALS_MINERS:
+        asset_class = "metal_miner"
+    else:
+        asset_class = "equity"
+
     return {
-        "ticker": ticker,
-        "price":  price,
-        "chg":    chg,
-        "score":  min(100, max(0, round(sc))),
-        "upside": upside,
+        "ticker":      ticker,
+        "price":       price,
+        "chg":         chg,
+        "score":       min(100, max(0, round(sc))),
+        "upside":      upside,
+        "asset_class": asset_class,
     }
 
 
@@ -284,8 +337,17 @@ def run_agent() -> None:
         logger.warning("Using fallback ticker list (%d tickers)", len(FALLBACK_TICKERS))
         tickers = FALLBACK_TICKERS
 
+    # Append precious metals tickers if enabled in config
+    trade_metals = db.config_get("trade_metals") != "0"
+    if trade_metals:
+        metals_to_add = METALS_TICKERS - set(t.upper() for t in tickers)
+        tickers = list(tickers) + sorted(metals_to_add)
+        logger.info("Precious metals enabled — added %d metals tickers", len(metals_to_add))
+    else:
+        logger.info("Precious metals disabled — skipping metals tickers")
+
     # -- 3. Quote & score -------------------------------------------------------
-    logger.info("Quoting %d stocks…", len(tickers))
+    logger.info("Quoting %d tickers (stocks + metals)…", len(tickers))
     scored: list[dict] = []
     for tk in tickers:
         tk = tk.upper().strip()
@@ -301,8 +363,23 @@ def run_agent() -> None:
 
     scored.sort(key=_composite, reverse=True)
     db.save_stock_scores(_run_id, scored)
+
+    metals_scored = [s for s in scored if s["asset_class"] in ("metal_etf", "metal_miner")]
+    equities_scored = [s for s in scored if s["asset_class"] == "equity"]
     top5 = ", ".join(f"{s['ticker']}({s['score']})" for s in scored[:5])
-    logger.info("Scored %d stocks. Top 5: %s", len(scored), top5)
+    logger.info(
+        "Scored %d tickers (%d equities, %d metals). Top 5: %s",
+        len(scored), len(equities_scored), len(metals_scored), top5,
+    )
+
+    if metals_scored:
+        logger.info("-- Top metals --")
+        for s in metals_scored[:8]:
+            label = "ETF  " if s["asset_class"] == "metal_etf" else "Miner"
+            logger.info(
+                "  %-6s [%s] $%8.2f  day %+5.1f%%  score %3d  upside %4.0f%%",
+                s["ticker"], label, s["price"], s["chg"], s["score"], s["upside"],
+            )
 
     logger.info("-- Top 20 ranked --")
     for i, s in enumerate(scored[:20], 1):

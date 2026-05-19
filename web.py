@@ -134,6 +134,7 @@ def dashboard():
     recent = db.get_run_logs(tail=15)
     times  = db.schedule_list()
     cfg    = db.config_get_all()
+    top_scores = db.get_latest_scores()
     return render_template(
         "dashboard.html",
         snap=snap,
@@ -141,6 +142,7 @@ def dashboard():
         times=times,
         cfg=cfg,
         state=_agent_state,
+        top_scores=top_scores,
     )
 
 
@@ -168,6 +170,8 @@ def config_save():
         val = request.form.get(key, "").strip()
         if val:
             db.config_set(key, val)
+    # Checkbox — present means "1", absent means "0"
+    db.config_set("trade_metals", "1" if request.form.get("trade_metals") else "0")
     tz = request.form.get("timezone", "").strip()
     if tz:
         try:
