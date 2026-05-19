@@ -337,43 +337,53 @@ def run_agent() -> None:
     db.save_portfolio_snapshot(_run_id, cash, invested, pnl, positions)
 
     # -- 2. Discover tickers ----------------------------------------------------
-    logger.info("Discovering stock list from API…")
+    # Check whether the platform has a stock-list endpoint. Once we confirm it
+    # doesn't (all endpoints return empty bodies), cache that in the DB so we
+    # skip the 5 wasted HTTP calls on every subsequent run.
     tickers: list[str] = []
-    for ep in [
-        "/api/stocks",
-        "/api/stocks/list",
-        f"/api/games/{game_id}/stocks",
-        f"/api/games/{game_id}/available_stocks",
-        "/api/market/stocks",
-    ]:
-        try:
-            data = _get(session, base_url, ep)
-            # Log what the endpoint actually returned so we can diagnose failures
-            preview = str(data)[:120].replace("\n", " ")
-            logger.info("  %s -> %s", ep, preview)
 
-            arr = (
-                data if isinstance(data, list) else
-                data.get("stocks") or data.get("symbols") or
-                data.get("tickers") or data.get("data") or []
-            )
-            if arr:
-                tickers = [
-                    (x if isinstance(x, str) else
-                     x.get("symbol") or x.get("ticker") or x.get("stock") or "")
-                    for x in arr
-                ]
-                tickers = [t for t in tickers if t]
-                logger.info("OK %d tickers from %s", len(tickers), ep)
-                break
-            else:
-                logger.warning("  %s returned data but no usable ticker array (keys: %s)",
-                               ep, list(data.keys()) if isinstance(data, dict) else type(data).__name__)
-        except Exception as e:
-            logger.warning("  %s failed: %s", ep, e)
+    API_HAS_STOCK_LIST_KEY = "api_has_stock_list"
+    api_has_list = db.config_get(API_HAS_STOCK_LIST_KEY)  # "1", "0", or ""
+
+    if api_has_list != "0":  # probe unless we've confirmed it doesn't exist
+        logger.info("Probing API for stock list…")
+        for ep in [
+            "/api/stocks",
+            "/api/stocks/list",
+            f"/api/games/{game_id}/stocks",
+            f"/api/games/{game_id}/available_stocks",
+            "/api/market/stocks",
+        ]:
+            try:
+                resp = session.get(base_url + ep, timeout=15)
+                if not resp.ok or not resp.text.strip():
+                    continue                      # empty body or HTTP error — skip quietly
+                data = resp.json()
+                arr = (
+                    data if isinstance(data, list) else
+                    data.get("stocks") or data.get("symbols") or
+                    data.get("tickers") or data.get("data") or []
+                )
+                if arr:
+                    tickers = [
+                        (x if isinstance(x, str) else
+                         x.get("symbol") or x.get("ticker") or x.get("stock") or "")
+                        for x in arr
+                    ]
+                    tickers = [t for t in tickers if t]
+                    logger.info("API stock list found: %d tickers from %s", len(tickers), ep)
+                    db.config_set(API_HAS_STOCK_LIST_KEY, "1")
+                    break
+            except Exception:
+                pass
+
+        if not tickers and api_has_list == "":
+            # First time we've confirmed the API has no stock list — cache it
+            logger.info("API has no stock list endpoint — using built-in ticker list from now on")
+            db.config_set(API_HAS_STOCK_LIST_KEY, "0")
 
     if not tickers:
-        logger.warning("Using fallback ticker list (%d tickers)", len(FALLBACK_TICKERS))
+        logger.info("Using built-in ticker list (%d tickers)", len(FALLBACK_TICKERS))
         tickers = list(FALLBACK_TICKERS)
 
     # Append precious metals tickers if enabled in config
