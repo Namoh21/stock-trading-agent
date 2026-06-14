@@ -168,7 +168,25 @@ _DEFAULTS: dict[str, str] = {
 }
 
 
+_ASCII_ONLY_KEYS = {"api_key", "base_url"}
+
+
+def _assert_ascii(label: str, value: str) -> None:
+    """Reject values containing non-ASCII characters (e.g. a pasted '...'
+    truncation ellipsis), which crash requests/http.client with a latin-1
+    UnicodeEncodeError when used in headers or URLs."""
+    for i, ch in enumerate(value):
+        if ord(ch) > 127:
+            raise ValueError(
+                f"{label} contains a non-ASCII character {ch!r} (U+{ord(ch):04X}) "
+                f"at position {i}. If you copied a truncated preview (ending in "
+                f"'…'), re-enter the full value instead."
+            )
+
+
 def config_set(key: str, value: str) -> None:
+    if key in _ASCII_ONLY_KEYS:
+        _assert_ascii(key, value)
     is_sensitive = key in _SENSITIVE_KEYS
     stored = encrypt(value) if is_sensitive else value
     with get_conn() as conn:
