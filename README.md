@@ -86,6 +86,7 @@ Or use the IP address printed at the end of the installer.
 | **Logs** | Filterable log viewer (by level and run ID); auto-scrolls during live runs |
 | **Schedule** | Add/remove daily run times; suggested market-hour presets |
 | **Config** | Game ID, URL, username, and encrypted API key management |
+| **Update** | Check for and apply the latest version from GitHub; restarts the service automatically |
 
 The dashboard **auto-refreshes** portfolio cards and agent status every 8 seconds. When the agent is running, the log panel refreshes every 3 seconds.
 
@@ -117,6 +118,11 @@ python3 trading_agent.py run                       # run once immediately
 python3 trading_agent.py logs --tail 100 --level ERROR
 python3 trading_agent.py history --limit 50
 python3 trading_agent.py portfolio
+
+# Update from GitHub
+python3 trading_agent.py update --check             # check only
+python3 trading_agent.py update                      # pull latest, then:
+sudo systemctl restart trading-agent-web             #   restart to apply
 ```
 
 ---

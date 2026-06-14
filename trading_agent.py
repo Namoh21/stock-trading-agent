@@ -27,6 +27,17 @@ History & diagnostics:
 """
 
 import sys
+
+# Some environments (notably systemd services with no locale set) leave
+# stdout/stderr in a "latin-1" or ASCII encoding that can't represent the
+# "…" used throughout this file's log messages, crashing with
+# UnicodeEncodeError on the first log line. Force UTF-8 unconditionally.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except AttributeError:
+        pass
+
 import math
 import uuid
 import signal
@@ -766,6 +777,34 @@ def cmd_portfolio(_args: argparse.Namespace) -> None:
     print()
 
 
+def cmd_update(args: argparse.Namespace) -> None:
+    import updater
+    try:
+        if args.check:
+            status = updater.check_for_update()
+            if status["up_to_date"]:
+                print(f"Up to date (branch {status['branch']} @ {status['current_short']}).")
+            else:
+                print(f"Update available: {status['current_short']} -> {status['remote_short']} (branch {status['branch']})")
+                print(f"{len(status['changelog'])} new commit(s):")
+                for line in status["changelog"]:
+                    print(f"  {line}")
+            return
+
+        for item in updater.apply_update():
+            if isinstance(item, tuple) and item[0] == "done":
+                _, success, msg = item
+                print(msg)
+                if success and "Updated to" in msg:
+                    print("Restart the service to apply the update:")
+                    print("  sudo systemctl restart trading-agent-web")
+            else:
+                print(item)
+    except updater.UpdateError as e:
+        print(f"Update failed: {e}")
+        sys.exit(1)
+
+
 # -- Entry point ----------------------------------------------------------------
 
 def main() -> None:
@@ -817,6 +856,10 @@ def main() -> None:
     # portfolio
     sub.add_parser("portfolio", help="Show latest portfolio snapshot from the database")
 
+    # update
+    upd_p = sub.add_parser("update", help="Check for or apply updates via git")
+    upd_p.add_argument("--check", action="store_true", help="Only check for updates, don't apply")
+
     args = parser.parse_args()
 
     if args.command == "config":
@@ -841,6 +884,9 @@ def main() -> None:
 
     elif args.command == "portfolio":
         cmd_portfolio(args)
+
+    elif args.command == "update":
+        cmd_update(args)
 
 
 if __name__ == "__main__":

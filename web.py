@@ -12,6 +12,8 @@ Access from any device on the same network:
 """
 
 import argparse
+import json
+import os
 import threading
 import logging
 from datetime import datetime, timezone
@@ -24,6 +26,7 @@ from flask import (
 
 import db
 import trading_agent as agent
+import updater
 
 # ── App setup ──────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -250,6 +253,53 @@ def history_page():
 def portfolio_page():
     snap = db.get_latest_snapshot()
     return render_template("portfolio.html", snap=snap)
+
+
+# ── Routes — Update ────────────────────────────────────────────────────────────
+
+@app.route("/update")
+def update_page():
+    is_repo = updater.is_git_repo()
+    branch = current_short = None
+    if is_repo:
+        try:
+            branch        = updater._git("rev-parse", "--abbrev-ref", "HEAD")
+            current_short = updater._git("rev-parse", "--short", "HEAD")
+        except updater.UpdateError:
+            pass
+    return render_template("update.html", is_repo=is_repo, branch=branch, current_short=current_short)
+
+
+@app.route("/update/check")
+def update_check():
+    try:
+        return jsonify(updater.check_for_update())
+    except updater.UpdateError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/update/apply")
+def update_apply():
+    def stream():
+        success = False
+        for item in updater.apply_update():
+            if isinstance(item, tuple) and item[0] == "done":
+                _, success, msg = item
+                yield f"event: done\ndata: {json.dumps({'success': success, 'msg': msg})}\n\n"
+            else:
+                yield f"event: log\ndata: {json.dumps({'msg': item})}\n\n"
+        if success:
+            # Exit non-zero so systemd (Restart=on-failure) brings the
+            # service back up running the freshly-pulled code.
+            def _restart():
+                _time.sleep(0.5)
+                os._exit(1)
+            threading.Thread(target=_restart, daemon=True).start()
+
+    return Response(stream(), mimetype="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+    })
 
 
 # ── API — JSON endpoints (used by JS polling) ──────────────────────────────────
