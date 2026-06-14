@@ -172,7 +172,11 @@ def config_save():
     for key in ("base_url", "game_id", "username"):
         val = request.form.get(key, "").strip()
         if val:
-            db.config_set(key, val)
+            try:
+                db.config_set(key, val)
+            except ValueError as e:
+                flash(str(e), "danger")
+                return redirect(url_for("config_page"))
     # Checkbox — present means "1", absent means "0"
     db.config_set("trade_metals", "1" if request.form.get("trade_metals") else "0")
     tz = request.form.get("timezone", "").strip()
@@ -193,7 +197,11 @@ def config_set_api_key():
     if not key:
         flash("API key cannot be empty.", "danger")
         return redirect(url_for("config_page"))
-    db.config_set("api_key", key)
+    try:
+        db.config_set("api_key", key)
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(url_for("config_page"))
     flash("API key saved (encrypted).", "success")
     return redirect(url_for("config_page"))
 

@@ -330,6 +330,17 @@ def run_agent() -> None:
         logger.error("API key not set. Run: python trading_agent.py config set-api-key")
         return
 
+    for label, value in (("api_key", api_key), ("base_url", base_url)):
+        for i, ch in enumerate(value):
+            if ord(ch) > 127:
+                logger.error(
+                    "%s contains a non-ASCII character %r (U+%04X) at position %d. "
+                    "If you copied a truncated preview (ending in '…'), re-enter the "
+                    "full value via Config.",
+                    label, ch, ord(ch), i,
+                )
+                return
+
     session = _make_session(api_key)
     user_label = f" ({username})" if username else ""
     logger.info("======== TRADING AGENT run_id=%s game=%d%s ========", _run_id, game_id, user_label)
@@ -683,7 +694,11 @@ def cmd_config_set(args: argparse.Namespace) -> None:
         print(f"Unknown config key '{key}'. Allowed: {', '.join(sorted(allowed))}")
         print("To set the API key use: python trading_agent.py config set-api-key")
         sys.exit(1)
-    db.config_set(key, value)
+    try:
+        db.config_set(key, value)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
     print(f"OK {key} = {value}")
 
 
@@ -693,7 +708,11 @@ def cmd_set_api_key(_args: argparse.Namespace) -> None:
     if not key.strip():
         print("Aborted — empty input.")
         sys.exit(1)
-    db.config_set("api_key", key.strip())
+    try:
+        db.config_set("api_key", key.strip())
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
     print("OK API key saved (encrypted).")
 
 
