@@ -38,6 +38,7 @@ for _stream in (sys.stdout, sys.stderr):
     except AttributeError:
         pass
 
+import re
 import math
 import uuid
 import signal
@@ -600,6 +601,16 @@ def run_agent() -> None:
             if "not in the allowed markets" in err or "not in allowed markets" in err:
                 db.blocklist_add(c["ticker"], f"Exchange not allowed: {err[err.find('(')+1:err.find(')')] if '(' in err else 'unknown'}")
                 logger.warning("BLOCKED %s permanently — not on an allowed exchange", c["ticker"])
+            # Our tracked cash is out of sync with the server's — re-sync from
+            # the error and bail out of further buys if there's nothing left.
+            elif "Insufficient funds" in err:
+                m = re.search(r"available \$([\d.]+)", err)
+                if m:
+                    avail_cash = float(m.group(1))
+                    logger.warning("Re-syncing available cash to $%.2f from server", avail_cash)
+                if avail_cash < 10:
+                    logger.info("Stopping buy loop — insufficient cash remaining ($%.2f)", avail_cash)
+                    break
 
     # -- 6. Final snapshot ------------------------------------------------------
     logger.info("Refreshing portfolio…")
