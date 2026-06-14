@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Update — Trading Agent{% endblock %}
+
+{% block content %}
+<div class="page-title">&#11014; Update</div>
+
+{% if not is_repo %}
+<div class="alert alert-danger">
+  Not a git repository — auto-update is unavailable. Re-clone the project from GitHub to enable updates.
+</div>
+{% else %}
+<div class="panel">
+  <div class="panel-title">Current Version</div>
+  <div style="margin-bottom:14px; font-size:12px; color:var(--muted)">
+    Branch <b style="color:var(--blue); font-family:monospace">{{ branch }}</b>
+    &mdash; commit <b style="color:var(--text); font-family:monospace">{{ current_short }}</b>
+  </div>
+  <div id="update-status" style="margin-bottom:14px; font-size:12px"></div>
+  <div id="update-changelog" style="margin-bottom:14px; display:none">
+    <div class="panel-title" style="margin-bottom:6px">New Commits</div>
+    <pre id="update-changelog-list" class="log-line" style="white-space:pre-wrap"></pre>
+  </div>
+  <div class="row">
+    <button class="btn" id="check-btn" onclick="checkUpdate()">Check for Updates</button>
+    <button class="btn btn-primary" id="apply-btn" onclick="applyUpdate()" style="display:none">
+      &#11014; Apply Update &amp; Restart
+    </button>
+  </div>
+  <div id="restart-notice" class="alert alert-success" style="display:none; margin-top:14px">
+    Service is restarting — this page will reconnect automatically.
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-title">Log</div>
+  <pre id="update-log" class="log-line" style="white-space:pre-wrap; max-height:320px; overflow-y:auto; min-height:60px">(no output yet)</pre>
+</div>
+{% endif %}
+
+{% block scripts %}
+<script>
+let _evtSource = null;
+
+async function checkUpdate() {
+  const statusEl = document.getElementById("update-status");
+  const applyBtn = document.getElementById("apply-btn");
+  const cl       = document.getElementById("update-changelog");
+  const clList   = document.getElementById("update-changelog-list");
+  statusEl.textContent = "Checking…";
+  applyBtn.style.display = "none";
+  cl.style.display = "none";
+  try {
+    const r = await fetch("/update/check");
+    const d = await r.json();
+    if (d.error) { statusEl.innerHTML = `<span class="text-red">${d.error}</span>`; return; }
+    if (d.up_to_date) {
+      statusEl.innerHTML = `<span class="pill pill-green">Up to date</span> &mdash; ${d.current_short} (branch ${d.branch})`;
+    } else {
+      statusEl.innerHTML = `<span class="pill pill-orange">Update available</span> ${d.current_short} &rarr; ${d.remote_short} (branch ${d.branch})`;
+      clList.textContent = d.changelog.join("\n");
+      cl.style.display = "";
+      applyBtn.style.display = "";
+    }
+  } catch (e) {
+    statusEl.innerHTML = `<span class="text-red">Check failed: ${e}</span>`;
+  }
+}
+
+function applyUpdate() {
+  const logEl    = document.getElementById("update-log");
+  const applyBtn = document.getElementById("apply-btn");
+  const checkBtn = document.getElementById("check-btn");
+  const notice   = document.getElementById("restart-notice");
+
+  applyBtn.disabled = true; applyBtn.textContent = "Updating…";
+  checkBtn.disabled = true;
+  logEl.textContent = "";
+
+  _evtSource = new EventSource("/update/apply");
+
+  _evtSource.addEventListener("log", e => {
+    const { msg } = JSON.parse(e.data);
+    logEl.textContent += msg + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+  });
+
+  _evtSource.addEventListener("done", e => {
+    _evtSource.close(); _evtSource = null;
+    const { success, msg } = JSON.parse(e.data);
+    logEl.textContent += "\n" + msg + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+    if (success && msg.startsWith("Updated to")) {
+      notice.style.display = "";
+      applyBtn.style.display = "none";
+      _pollForRestart();
+    } else {
+      applyBtn.disabled = false; applyBtn.textContent = "⬆ Apply Update & Restart";
+      checkBtn.disabled = false;
+    }
+  });
+
+  _evtSource.onerror = () => {
+    _evtSource.close(); _evtSource = null;
+    notice.style.display = "";
+    applyBtn.style.display = "none";
+    _pollForRestart();
+  };
+}
+
+function _pollForRestart(attempts = 0) {
+  if (attempts > 30) {
+    document.getElementById("restart-notice").textContent = "Service did not come back — check it manually.";
+    return;
+  }
+  setTimeout(async () => {
+    try {
+      await fetch("/api/status");
+      document.getElementById("restart-notice").textContent = "Service restarted successfully! Reload the page to get the latest UI.";
+    } catch {
+      _pollForRestart(attempts + 1);
+    }
+  }, 2000);
+}
+
+checkUpdate();
+</script>
+{% endblock %}
+{% endblock %}
